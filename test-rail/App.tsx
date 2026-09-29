@@ -17,6 +17,12 @@ export function App() {
   const [layerSpacing, setLayerSpacing] = useState(240);
   const [view, setView] = useState<GraphView>('3d');
   const [focusedLayerId, setFocusedLayerId] = useState<string | null>('components');
+  const [cameraRequestKey, setCameraRequestKey] = useState(0);
+
+  function selectView(nextView: GraphView) {
+    setView(nextView);
+    setCameraRequestKey((key) => key + 1);
+  }
 
   function toggleLayer(id: string) {
     setVisibleLayerIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -28,7 +34,7 @@ export function App() {
   return <div className="rail">
     <header className="rail-nav"><div className="rail-brand"><span>▱</span> System graph</div>
       <nav className="rail-views" aria-label="Camera view">{(['3d', 'top', 'side', 'front'] as GraphView[]).map((option) =>
-        <button key={option} className={view === option ? 'active' : ''} onClick={() => setView(option)}>{option === '3d' ? '◈' : option === 'top' ? '▣' : option === 'side' ? '☷' : '▥'} {option === '3d' ? '3D' : option[0].toUpperCase() + option.slice(1)}</button>)}</nav>
+        <button key={option} className={view === option ? 'active' : ''} onClick={() => selectView(option)}>{option === '3d' ? '◈' : option === 'top' ? '▣' : option === 'side' ? '☷' : '▥'} {option === '3d' ? '3D' : option[0].toUpperCase() + option.slice(1)}</button>)}</nav>
     </header>
     <main className="rail-main">
       <aside className="rail-sidebar">
@@ -36,7 +42,7 @@ export function App() {
           const count = sampleGraph.nodes.filter((node) => node.layerId === layer.id).length;
           const active = visibleLayerIds.includes(layer.id);
           return <div className={`rail-row${active ? '' : ' is-muted'}`} key={layer.id}>
-            <button className="rail-row-main" onClick={() => { setFocusedLayerId(layer.id); setView('top'); if (!active) toggleLayer(layer.id); }} title={`Top view of ${layer.label}`}>
+            <button className="rail-row-main" onClick={() => { setFocusedLayerId(layer.id); selectView('top'); if (!active) toggleLayer(layer.id); }} title={`Top view of ${layer.label}`}>
               <span className="rail-key">{layer.key}</span><span className="rail-symbol">{layer.id === 'resources' ? '◉' : layer.id === 'components' ? '⬡' : layer.id === 'bffs' ? '⬢' : '▣'}</span><span className="rail-name">{layer.label}</span><span className="rail-count">{count}</span>
             </button><button className="rail-eye" onClick={() => toggleLayer(layer.id)} aria-label={`${active ? 'Hide' : 'Show'} ${layer.label}`}>{active ? '◉' : '○'}</button>
           </div>;
@@ -52,7 +58,7 @@ export function App() {
       </aside>
       <div className="rail-content"><DependencyGraph data={sampleGraph} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
         visibleLayerIds={visibleLayerIds} visibleEdgeTypes={visibleEdgeTypes} showOwners={showOwners} layerSpacing={layerSpacing}
-        view={view} focusedLayerId={focusedLayerId} /></div>
+        view={view} focusedLayerId={focusedLayerId} cameraRequestKey={cameraRequestKey} onViewChange={setView} /></div>
     </main>
   </div>;
 }

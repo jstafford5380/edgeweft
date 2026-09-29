@@ -8,7 +8,7 @@
 .dgt-world-labels { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
 .dgt-shelf-label { position: absolute; left: 0; top: 0; width: 165px; display: grid; gap: 3px; text-align: right; color: #e7e5fe; font: 500 14px/1.15 Inter, system-ui, sans-serif; text-shadow: 0 0 8px #10111e, 0 0 18px #10111e; will-change: transform; }
 .dgt-shelf-label span { color: #b2b6ca; font-size: 12px; line-height: 1.25; }
-.dgt-node-label { position: absolute; left: 0; top: 0; color: #f5f4ff; font: 500 11px/1.2 Inter, system-ui, sans-serif; white-space: nowrap; text-shadow: 0 0 6px #10111e, 0 0 10px #10111e, 0 0 4px #10111e; will-change: transform, opacity; }
+.dgt-node-label { position: absolute; left: 0; top: 0; color: #f5f4ff; font: 500 12.5px/1.2 Inter, system-ui, sans-serif; white-space: nowrap; text-shadow: 0 0 6px #10111e, 0 0 10px #10111e, 0 0 4px #10111e; will-change: transform, opacity; }
 .dgt-node-label span { color: #d2cefd; }
 .dgt-node-label.is-selected { color: #fff0b0; }
 .dgt-node-label.is-dimmed { opacity: .15; }

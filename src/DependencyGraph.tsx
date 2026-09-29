@@ -1,16 +1,17 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Edges, Line, OrbitControls } from '@react-three/drei';
-import { DoubleSide, Vector2, Vector3 } from 'three';
+import { DoubleSide, Group, Material, Vector2, Vector3 } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { cameraPoseForView, interpolateCameraPose, type CameraPose, type GraphView } from './camera';
 import { getConnectedNodes, validateGraph } from './graph';
 import type { GraphData, GraphNode } from './types';
 import './style.css';
 
-export type GraphView = '3d' | 'top' | 'side' | 'front';
+export type { GraphView } from './camera';
 
 export interface DependencyGraphProps {
   data: GraphData;
@@ -22,6 +23,8 @@ export interface DependencyGraphProps {
   layerSpacing?: number;
   view?: GraphView;
   focusedLayerId?: string | null;
+  cameraRequestKey?: number;
+  onViewChange?: (view: GraphView) => void;
   bloom?: boolean;
   className?: string;
 }
@@ -42,20 +45,109 @@ const ground = (() => {
   return new Float32Array(values);
 })();
 
-function CameraRig({ view, focus, spacing }: { view: GraphView; focus: number; spacing: number }) {
+function CameraRig({ view, focus, spacing, requestKey, overheadFocused, onExitOverhead }: {
+  view: GraphView; focus: number; spacing: number; requestKey: number; overheadFocused: boolean; onExitOverhead: () => boolean;
+}) {
   const { camera, size } = useThree();
-  const mid = spacing * 1.35;
-  const target = view === 'top' && focus >= 0 ? focus * spacing : mid;
+  const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
+  const transitionRef = useRef<{ from: CameraPose; to: CameraPose; started: number; duration: number } | null>(null);
+  const previousRef = useRef<string | null>(null);
+  const interactingRef = useRef(false);
+  const skipTransitionRef = useRef(false);
+
+  function readPose(): CameraPose {
+    const target = controlsRef.current?.target ?? new Vector3();
+    const offset = camera.position.clone().sub(target);
+    const r = offset.length();
+    return {
+      az: Math.atan2(offset.x, offset.z),
+      pol: Math.acos(Math.max(-1, Math.min(1, offset.y / r))),
+      r, tx: target.x, ty: target.y, tz: target.z,
+    };
+  }
+
+  function applyPose(pose: CameraPose) {
+    const controls = controlsRef.current;
+    controls?.target.set(pose.tx, pose.ty, pose.tz);
+    const sin = Math.sin(pose.pol);
+    camera.position.set(
+      pose.tx + pose.r * sin * Math.sin(pose.az),
+      pose.ty + pose.r * Math.cos(pose.pol),
+      pose.tz + pose.r * sin * Math.cos(pose.az),
+    );
+    camera.lookAt(pose.tx, pose.ty, pose.tz);
+    controls?.update();
+  }
+
   useEffect(() => {
-    const scale = Math.max(1.3, 1200 / Math.max(size.width, 1));
-    if (view === 'top') camera.position.set(0, target + 1200 * scale, 1);
-    else if (view === 'side') camera.position.set(1350 * scale, mid + 150, 0);
-    else if (view === 'front') camera.position.set(0, mid + 150, 1500 * scale);
-    else camera.position.set(-670 * scale, mid + 865 * scale, 1235 * scale);
-    camera.lookAt(0, target, 0);
-    camera.updateProjectionMatrix();
-  }, [camera, view, focus, spacing, size.width, mid, target]);
-  return <OrbitControls key={`${view}-${focus}`} target={[0, target, 0]} minDistance={300} maxDistance={4800} enableDamping />;
+    const to = cameraPoseForView(view, focus, spacing, size.width);
+    const request = `${view}:${focus}:${spacing}:${requestKey}`;
+    const previous = previousRef.current;
+    previousRef.current = request;
+    if (skipTransitionRef.current) {
+      skipTransitionRef.current = false;
+      return;
+    }
+    if (!previous || previous === request) {
+      transitionRef.current = null;
+      applyPose(to);
+      return;
+    }
+    const controls = controlsRef.current;
+    if (controls) controls.enableDamping = false;
+    transitionRef.current = { from: readPose(), to, started: performance.now(), duration: view === 'top' ? 1100 : 900 };
+  }, [view, focus, spacing, requestKey, size.width]);
+
+  useFrame(() => {
+    const transition = transitionRef.current;
+    if (!transition) return;
+    const progress = Math.min(1, (performance.now() - transition.started) / transition.duration);
+    applyPose(interpolateCameraPose(transition.from, transition.to, progress));
+    if (progress >= 1) {
+      transitionRef.current = null;
+      if (controlsRef.current) controlsRef.current.enableDamping = true;
+    }
+  });
+
+  return <OrbitControls ref={controlsRef} minDistance={300} maxDistance={4800} minPolarAngle={0.0005} maxPolarAngle={1.55}
+    enableDamping onStart={() => { interactingRef.current = true; transitionRef.current = null; if (controlsRef.current) controlsRef.current.enableDamping = true; }}
+    onEnd={() => { interactingRef.current = false; }}
+    onChange={() => {
+      if (interactingRef.current && overheadFocused && controlsRef.current && controlsRef.current.getPolarAngle() > 0.04) {
+        interactingRef.current = false;
+        skipTransitionRef.current = onExitOverhead();
+      }
+    }} />;
+}
+
+function SceneFader({ root, fades, count, focus }: {
+  root: React.RefObject<Group | null>; fades: React.RefObject<number[]>; count: number; focus: number | null;
+}) {
+  const baseOpacity = useRef(new WeakMap<Material, number>());
+  useFrame((_, delta) => {
+    const blend = 1 - Math.exp(-8 * delta);
+    for (let i = 0; i < count; i++) {
+      const target = focus === null ? 1 : i === focus ? 1 : i < focus ? 0.1 : 0;
+      fades.current[i] = (fades.current[i] ?? 1) + (target - (fades.current[i] ?? 1)) * blend;
+    }
+    for (const child of root.current?.children ?? []) {
+      const index = child.userData.fadeLayer as number | undefined;
+      if (index === undefined) continue;
+      const other = child.userData.fadeOtherLayer as number | undefined;
+      const opacity = other === undefined ? fades.current[index] : Math.min(fades.current[index], fades.current[other]);
+      child.visible = opacity > 0.005;
+      child.traverse((object) => {
+        const objectMaterials = 'material' in object ? (object as { material: Material | Material[] }).material : undefined;
+        if (!objectMaterials) return;
+        for (const material of Array.isArray(objectMaterials) ? objectMaterials : [objectMaterials]) {
+          if (!baseOpacity.current.has(material)) baseOpacity.current.set(material, material.opacity);
+          material.transparent = true;
+          material.opacity = (baseOpacity.current.get(material) ?? 1) * opacity;
+        }
+      });
+    }
+  });
+  return null;
 }
 
 function Bloom({ enabled }: { enabled: boolean }) {
@@ -125,11 +217,13 @@ function Node({ node, index, spacing, selected, dimmed, onSelect }: {
   </group>;
 }
 
-function SceneLabels({ data, indices, spacing, visible, selected, stage, nodeLabels, layerLabels }: {
+function SceneLabels({ data, indices, spacing, visible, selected, stage, nodeLabels, layerLabels, fades, focus }: {
   data: GraphData; indices: Map<string, number>; spacing: number; visible: Set<string>; selected: string | null;
   stage: React.RefObject<HTMLDivElement | null>;
   nodeLabels: React.RefObject<Map<string, HTMLDivElement>>;
   layerLabels: React.RefObject<Map<string, HTMLDivElement>>;
+  fades: React.RefObject<number[]>;
+  focus: number | null;
 }) {
   const point = useMemo(() => new Vector3(), []);
   const related = useMemo(() => {
@@ -151,8 +245,10 @@ function SceneLabels({ data, indices, spacing, visible, selected, stage, nodeLab
       if (!label) continue;
       if (!visible.has(layer.id)) { label.style.visibility = 'hidden'; continue; }
       const index = indices.get(layer.id) ?? 0;
+      const opacity = fades.current[index] ?? 1;
       point.set(-W / 2, index * spacing + 5, D * 0.15).project(camera);
-      label.style.visibility = point.z < -1 || point.z > 1 ? 'hidden' : 'visible';
+      label.style.visibility = opacity < 0.01 || point.z < -1 || point.z > 1 ? 'hidden' : 'visible';
+      label.style.opacity = String(opacity);
       const x = (point.x + 1) / 2 * width;
       const y = (1 - point.y) / 2 * height;
       label.style.transform = `translate3d(${Math.max(8, x - label.offsetWidth - 18).toFixed(1)}px,${(y - label.offsetHeight / 2).toFixed(1)}px,0)`;
@@ -162,10 +258,12 @@ function SceneLabels({ data, indices, spacing, visible, selected, stage, nodeLab
       if (!label) continue;
       if (!visible.has(node.layerId)) { label.style.visibility = 'hidden'; continue; }
       const index = indices.get(node.layerId) ?? 0;
+      const opacity = fades.current[index] ?? 1;
+      const labelOpacity = focus !== null && index < focus ? Math.max(opacity, 0.42) : opacity;
       const rise = index === 0 ? 49 : index === 2 ? 46 : index === 3 ? 31 : 36;
       point.set(node.x, index * spacing + rise, node.z).project(camera);
-      label.style.visibility = point.z < -1 || point.z > 1 ? 'hidden' : 'visible';
-      label.style.opacity = related && !related.has(node.id) ? '0.14' : '1';
+      label.style.visibility = opacity < 0.01 || point.z < -1 || point.z > 1 ? 'hidden' : 'visible';
+      label.style.opacity = String(labelOpacity * (related && !related.has(node.id) ? 0.14 : 1));
       const x = (point.x + 1) / 2 * width;
       const y = (1 - point.y) / 2 * height;
       label.style.transform = `translate3d(${(x - label.offsetWidth / 2).toFixed(1)}px,${(y - label.offsetHeight / 2).toFixed(1)}px,0)`;
@@ -181,9 +279,9 @@ type DomRefs = {
   paths: React.RefObject<Map<string, SVGPathElement>>;
 };
 
-function OwnerPaths({ data, indices, spacing, visible, selected, refs }: {
+function OwnerPaths({ data, indices, spacing, visible, selected, refs, fades }: {
   data: GraphData; indices: Map<string, number>; spacing: number; visible: Set<string>;
-  selected: string | null; refs: DomRefs;
+  selected: string | null; refs: DomRefs; fades: React.RefObject<number[]>;
 }) {
   const vector = useMemo(() => new Vector3(), []);
   const nodes = useMemo(() => new Map(data.nodes.map((node) => [node.id, node])), [data.nodes]);
@@ -207,16 +305,21 @@ function OwnerPaths({ data, indices, spacing, visible, selected, refs }: {
       const y2 = target.top - board.top + target.height / 2;
       const bend = Math.max(60, (x2 - x1) * 0.5);
       path.setAttribute('d', `M${x1.toFixed(1)} ${y1.toFixed(1)} C${(x1 + bend).toFixed(1)} ${y1.toFixed(1)} ${(x2 - bend).toFixed(1)} ${y2.toFixed(1)} ${x2.toFixed(1)} ${y2.toFixed(1)}`);
-      path.style.opacity = selected ? selected === link.nodeId || selected === link.ownerId ? '0.85' : '0.025' : '0.16';
+      const opacity = selected ? selected === link.nodeId || selected === link.ownerId ? 0.85 : 0.025 : 0.16;
+      path.style.opacity = String(opacity * (fades.current[indices.get(node.layerId) ?? 0] ?? 1));
     }
   });
   return null;
 }
 
 export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, visibleLayerIds, visibleEdgeTypes,
-  showOwners = true, layerSpacing = 240, view = '3d', focusedLayerId = null, bloom = true, className }: DependencyGraphProps) {
+  showOwners = true, layerSpacing = 240, view = '3d', focusedLayerId = null, cameraRequestKey = 0, onViewChange, bloom = true, className }: DependencyGraphProps) {
   const board = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
+  const sceneRoot = useRef<Group>(null);
+  const fades = useRef<number[]>([]);
+  const [orbitExited, setOrbitExited] = useState(false);
+  useEffect(() => { setOrbitExited(false); }, [view, focusedLayerId, cameraRequestKey]);
   const owners = useRef(new Map<string, HTMLSpanElement>());
   const paths = useRef(new Map<string, SVGPathElement>());
   const nodeLabels = useRef(new Map<string, HTMLDivElement>());
@@ -236,7 +339,8 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
     return set;
   }, [selectedNodeId, data.edges, data.ownership]);
   const focus = focusedLayerId ? indices.get(focusedLayerId) ?? -1 : view === 'top' ? Math.min(1, data.layers.length - 1) : -1;
-  const sceneVisible = view === 'top' && focus >= 0 ? new Set([data.layers[focus].id]) : visible;
+  const focusedOverhead = view === 'top' && focus >= 0 && !orbitExited;
+  const fadeFocus = focusedOverhead ? focus : null;
   if (errors.length) return <div className="dgt-error" role="alert">Invalid graph: {errors.join('; ')}</div>;
   const selectedNode = selectedNodeId ? nodes.get(selectedNodeId) : undefined;
   const selectedOwner = data.owners?.find((owner) => owner.id === selectedNodeId);
@@ -249,31 +353,37 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
         <color attach="background" args={[BG]} /><fog attach="fog" args={[BG, 1900, 4200]} />
         <ambientLight intensity={1.1} /><directionalLight position={[-400, 900, 600]} intensity={1.7} />
         <pointLight position={[0, 300, 300]} intensity={18000} color="#968ae0" />
-        <CameraRig view={view} focus={focus} spacing={layerSpacing} />
+        <CameraRig view={view} focus={focus} spacing={layerSpacing} requestKey={cameraRequestKey} overheadFocused={focusedOverhead}
+          onExitOverhead={() => { setOrbitExited(true); onViewChange?.('3d'); return !!onViewChange; }} />
         <lineSegments position={[0, -100, 0]}>
           <bufferGeometry><bufferAttribute attach="attributes-position" args={[ground, 3]} /></bufferGeometry>
           <lineBasicMaterial color="#3e376d" transparent opacity={0.2} depthWrite={false} />
         </lineSegments>
-        {data.layers.map((layer, index) => sceneVisible.has(layer.id) && <Shelf key={layer.id} index={index} spacing={layerSpacing} />)}
+        <group ref={sceneRoot}>
+        {data.layers.map((layer, index) => visible.has(layer.id) && <group key={layer.id} userData={{ fadeLayer: index }}>
+          <Shelf index={index} spacing={layerSpacing} />
+          {data.nodes.filter((node) => node.layerId === layer.id).map((node) => <Node key={node.id} node={node} index={index}
+            spacing={layerSpacing} selected={node.id === selectedNodeId} dimmed={!!related && !related.has(node.id)}
+            onSelect={(id) => onSelectNode?.(id)} />)}
+        </group>)}
         {data.edges.map((edge, index) => {
           const a = nodes.get(edge.source)!; const b = nodes.get(edge.target)!;
-          if (!sceneVisible.has(a.layerId) || !sceneVisible.has(b.layerId) || !edgeTypes.has(edge.type ?? 'dependency')) return null;
+          if (!visible.has(a.layerId) || !visible.has(b.layerId) || !edgeTypes.has(edge.type ?? 'dependency')) return null;
           const ai = indices.get(a.layerId)!; const bi = indices.get(b.layerId)!;
           const same = ai === bi;
           const active = !selectedNodeId || edge.source === selectedNodeId || edge.target === selectedNodeId;
           const points: [number, number, number][] = [[a.x, ai * layerSpacing + (same ? 7 : 20), a.z], [b.x, bi * layerSpacing + (same ? 7 : 20), b.z]];
-          return <group key={`${edge.source}-${edge.target}-${index}`}>
+          return <group key={`${edge.source}-${edge.target}-${index}`} userData={{ fadeLayer: ai, fadeOtherLayer: bi }}>
             {same && <Line points={points} color="#a99cf4" lineWidth={7} transparent opacity={active ? 0.14 : 0.02} />}
             <Line points={points} color={same ? '#d2cefd' : '#b5abfc'} lineWidth={same ? 1.8 : 1.1}
               transparent opacity={active ? same ? 0.85 : 0.45 : 0.04} dashed={!same} dashSize={8} gapSize={6} />
           </group>;
         })}
-        {data.nodes.map((node) => sceneVisible.has(node.layerId) && <Node key={node.id} node={node} index={indices.get(node.layerId) ?? 0}
-          spacing={layerSpacing} selected={node.id === selectedNodeId} dimmed={!!related && !related.has(node.id)}
-          onSelect={(id) => onSelectNode?.(id)} />)}
-        <SceneLabels data={data} indices={indices} spacing={layerSpacing} visible={sceneVisible} selected={selectedNodeId}
-          stage={stage} nodeLabels={nodeLabels} layerLabels={layerLabels} />
-        {showPanel && <OwnerPaths data={data} indices={indices} spacing={layerSpacing} visible={sceneVisible} selected={selectedNodeId} refs={refs} />}
+        </group>
+        <SceneFader root={sceneRoot} fades={fades} count={data.layers.length} focus={fadeFocus} />
+        <SceneLabels data={data} indices={indices} spacing={layerSpacing} visible={visible} selected={selectedNodeId}
+          stage={stage} nodeLabels={nodeLabels} layerLabels={layerLabels} fades={fades} focus={fadeFocus} />
+        {showPanel && <OwnerPaths data={data} indices={indices} spacing={layerSpacing} visible={visible} selected={selectedNodeId} refs={refs} fades={fades} />}
         <Bloom enabled={bloom} />
       </Canvas>
       <div className="dgt-world-labels" aria-hidden="true">
@@ -286,8 +396,8 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
           <span>{(indices.get(node.layerId) ?? 0) === 0 ? '◉' : (indices.get(node.layerId) ?? 0) === 1 ? '⬡' : (indices.get(node.layerId) ?? 0) === 2 ? '⬢' : '▣'}</span> {node.label}
         </div>)}
       </div>
-      <div className="dgt-heading"><h2>{view === 'top' && focus >= 0 ? `${data.layers[focus].key ?? data.layers[focus].id} · ${data.layers[focus].label}` : 'System architecture'}</h2>
-        <p>{view === 'top' && focus >= 0 ? `Top-down view of the ${data.layers[focus].label.toLowerCase()} shelf.` : 'One shelf per kind of entity. Owners stay flat in their own 2D group.'}</p></div>
+      <div className="dgt-heading"><h2>{focusedOverhead ? `${data.layers[focus].key ?? data.layers[focus].id} · ${data.layers[focus].label}` : 'System architecture'}</h2>
+        <p>{focusedOverhead ? `Top-down view of the ${data.layers[focus].label.toLowerCase()} shelf.` : 'One shelf per kind of entity. Owners stay flat in their own 2D group.'}</p></div>
       {(selectedNode || selectedOwner) && <div className="dgt-selection"><button aria-label="Clear selection" onClick={() => onSelectNode?.(null)}>×</button>
         <strong>{selectedNode?.label ?? selectedOwner?.label}</strong><span>{selectedNode?.subtitle ?? selectedOwner?.lead}</span>
         <small>{selectedNode ? selectedNode.layerId : `${data.ownership?.filter((link) => link.ownerId === selectedNodeId).length ?? 0} owned entities`}</small>
