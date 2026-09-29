@@ -1,0 +1,34 @@
+.dgt-board { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 210px; width: 100%; height: 100%; min-height: 500px; overflow: hidden; color: #e9e9ed; background: #10111e; border: 1px solid #3f424d; border-radius: 14px; font-family: Inter, system-ui, sans-serif; }
+.dgt-board.no-owners { grid-template-columns: minmax(0, 1fr); }
+.dgt-stage { position: relative; min-width: 0; min-height: 0; overflow: hidden; z-index: 1; }
+.dgt-stage canvas { display: block; }
+.dgt-heading { position: absolute; top: 18px; left: 22px; z-index: 3; max-width: 440px; pointer-events: none; }
+.dgt-heading h2 { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
+.dgt-heading p { margin: 0; color: #b2b6ca; font-size: 13px; }
+.dgt-world-labels { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
+.dgt-shelf-label { position: absolute; left: 0; top: 0; width: 165px; display: grid; gap: 3px; text-align: right; color: #e7e5fe; font: 500 14px/1.15 Inter, system-ui, sans-serif; text-shadow: 0 0 8px #10111e, 0 0 18px #10111e; will-change: transform; }
+.dgt-shelf-label span { color: #b2b6ca; font-size: 12px; line-height: 1.25; }
+.dgt-node-label { position: absolute; left: 0; top: 0; color: #f5f4ff; font: 500 11px/1.2 Inter, system-ui, sans-serif; white-space: nowrap; text-shadow: 0 0 6px #10111e, 0 0 10px #10111e, 0 0 4px #10111e; will-change: transform, opacity; }
+.dgt-node-label span { color: #d2cefd; }
+.dgt-node-label.is-selected { color: #fff0b0; }
+.dgt-node-label.is-dimmed { opacity: .15; }
+.dgt-legend { position: absolute; z-index: 3; left: 18px; bottom: 15px; display: flex; gap: 14px; flex-wrap: wrap; color: #cfd3e5; font-size: 11px; pointer-events: none; }
+.dgt-owners { position: relative; z-index: 3; min-width: 0; padding: 18px 12px; overflow: auto; background: #222431; border-left: 1px solid #3f424d; }
+.dgt-owners-heading { display: flex; align-items: center; gap: 7px; }
+.dgt-owners-heading h3 { margin: 0; color: #e7e5fe; font-size: 17px; font-weight: 600; }
+.dgt-owners-heading > span { padding: 1px 7px; border-radius: 5px; color: #e4e7f5; background: #3f424d; font-size: 10px; font-weight: 700; }
+.dgt-owners > p { margin: 5px 0 14px; color: #b2b6ca; font-size: 11.5px; line-height: 1.4; }
+.dgt-owner { width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 5px; color: #e9e9ed; background: transparent; border: 0; border-radius: 7px; text-align: left; cursor: pointer; transition: background .2s, opacity .2s; }
+.dgt-owner:hover, .dgt-owner.is-selected { background: #34314b; }
+.dgt-owner.is-dimmed { opacity: .36; }
+.dgt-owner-dot { width: 30px; height: 30px; flex: none; display: grid; place-items: center; border: 1px solid #796cbf; border-radius: 50%; color: #e7e5fe; background: #2b2741; font-size: 10px; }
+.dgt-owner.is-selected .dgt-owner-dot { box-shadow: 0 0 10px #968ae0; }
+.dgt-owner-copy { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.dgt-owner-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; font-weight: 500; }
+.dgt-owner-copy small, .dgt-owner-count { color: #9397ab; font-size: 11px; }
+.dgt-ownership-lines { position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.dgt-selection { position: absolute; top: 18px; right: 18px; z-index: 4; display: grid; gap: 5px; min-width: 220px; max-width: 260px; padding: 14px; color: #e9e9ed; background: #232532ee; border: 1px solid #595d6c; border-radius: 9px; box-shadow: 0 10px 25px #0008; }
+.dgt-selection strong { font-size: 16px; }.dgt-selection span, .dgt-selection small { color: #b2b6ca; font-size: 12px; }
+.dgt-selection button { position: absolute; top: 4px; right: 6px; border: 0; background: transparent; color: #b2b6ca; font-size: 20px; cursor: pointer; }
+.dgt-error { padding: 1rem; color: #8d1d1d; background: #fff0f0; }
+@media (max-width: 760px) { .dgt-board { grid-template-columns: minmax(0, 1fr); } .dgt-owners { display: none; } .dgt-heading { left: 14px; top: 12px; } .dgt-heading h2 { font-size: 18px; } .dgt-heading p { font-size: 11px; } .dgt-legend { font-size: 9px; gap: 7px; } }

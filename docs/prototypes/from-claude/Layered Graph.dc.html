@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="_ds/nocturne-d464aee2-2a7a-494f-9992-b08e0aff41eb/styles.css">
+<script src="_ds/nocturne-d464aee2-2a7a-494f-9992-b08e0aff41eb/_ds_bundle.js"></script>
+<script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:var(--color-bg)}a{color:var(--color-accent)}a:hover{color:var(--color-accent-300)}</style>
+</helmet>
+<div style="height:100vh;display:flex;flex-direction:column;background:radial-gradient(120% 90% at 60% 40%, var(--color-surface) 0%, var(--color-bg) 70%);color:var(--color-text);font-family:var(--font-body)">
+  <div class="nav" style="padding:12px 18px;gap:14px">
+    <div class="nav-brand" style="display:flex;align-items:center;gap:10px;font-size:16px">
+      <i class="ph ph-stack" style="color:var(--color-accent);font-size:20px"></i>
+      <span>System graph</span>
+      <span style="font-size:13px;color:var(--color-neutral-500)">Layered view</span>
+    </div>
+    <div class="seg">
+      <sc-for list="{{presets}}" as="p" hint-placeholder-count="3">
+        <button class="seg-opt" onClick="{{p.onClick}}" style="background:transparent;border:0;font:inherit;font-size:13px;color:{{p.color}};box-shadow:{{p.ring}}">
+          <i class="{{p.icon}}"></i><span>{{p.label}}</span>
+        </button>
+      </sc-for>
+    </div>
+  </div>
+  <div style="flex:1;min-height:0;display:grid;grid-template-columns:260px minmax(0,1fr)">
+    <aside style="display:flex;flex-direction:column;gap:22px;padding:8px 14px 18px 18px;overflow:auto">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <h6 style="color:var(--color-neutral-500);margin:0 0 6px 8px;font-size:11px">Layers</h6>
+        <sc-for list="{{layerRows}}" as="l" hint-placeholder-count="3">
+          <div onClick="{{l.onFocus}}" style="display:flex;align-items:center;gap:10px;padding:6px 6px 6px 10px;border-radius:var(--radius-md);cursor:pointer;background:{{l.bg}};box-shadow:{{l.ring}};opacity:{{l.op}}" style-hover="background:color-mix(in srgb, var(--color-text) 6%, transparent)">
+            <span style="font-size:11px;color:var(--color-neutral-500);width:18px;font-variant-numeric:tabular-nums">{{l.key}}</span>
+            <svg width="14" height="14" style="flex:none"><rect x="1.5" y="1.5" width="11" height="11" rx="{{l.rx}}" style="fill:{{l.fill}};stroke:{{l.stroke}};stroke-width:1.4"></rect></svg>
+            <span style="flex:1;font-size:14px">{{l.name}}</span>
+            <span style="font-size:12px;color:var(--color-neutral-500);font-variant-numeric:tabular-nums">{{l.count}}</span>
+            <button class="btn btn-ghost" onClick="{{l.onToggle}}" title="Show / hide layer" style="width:28px;height:28px;padding:0;color:var(--color-neutral-400)"><i class="{{l.eye}}" style="font-size:15px"></i></button>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <h6 style="color:var(--color-neutral-500);margin:0 0 6px 8px;font-size:11px">Relationships</h6>
+        <sc-for list="{{relRows}}" as="r" hint-placeholder-count="3">
+          <div onClick="{{r.onToggle}}" style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--radius-md);cursor:pointer;opacity:{{r.op}}" style-hover="background:color-mix(in srgb, var(--color-text) 6%, transparent)">
+            <svg width="22" height="10" style="flex:none"><line x1="1" y1="5" x2="21" y2="5" style="stroke:{{r.stroke}};stroke-width:1.6;stroke-dasharray:{{r.dash}};stroke-linecap:round"></line></svg>
+            <span style="flex:1;font-size:14px;white-space:nowrap">{{r.label}}</span>
+            <span style="font-size:12px;color:var(--color-neutral-500)">{{r.span}}</span>
+            <i class="{{r.check}}" style="font-size:15px;color:var(--color-accent)"></i>
+          </div>
+        </sc-for>
+      </div>
+      <div style="margin-top:auto;display:flex;flex-direction:column;gap:6px;padding-left:8px;font-size:12px;color:var(--color-neutral-500)">
+        <div style="display:flex;gap:8px;align-items:center"><i class="ph ph-arrows-vertical"></i><span>Drag up / down to tilt layers apart</span></div>
+        <div style="display:flex;gap:8px;align-items:center"><i class="ph ph-arrows-clockwise"></i><span>Drag sideways to spin around z</span></div>
+        <div style="display:flex;gap:8px;align-items:center"><i class="ph ph-mouse-scroll"></i><span>Scroll to zoom · click a node to trace it</span></div>
+      </div>
+    </aside>
+    <div ref="{{canvasRef}}" style="position:relative;min-width:0;min-height:0;overflow:hidden">
+      <svg width="{{w}}" height="{{h}}" onPointerDown="{{onDown}}" style="position:absolute;left:0;top:0;display:block;touch-action:none;user-select:none;cursor:{{cursor}}">
+        <rect x="0" y="0" width="{{w}}" height="{{h}}" onClick="{{onBgClick}}" style="fill:transparent"></rect>
+        <g>
+          <sc-for list="{{crossEdges}}" as="e">
+            <line x1="{{e.x1}}" y1="{{e.y1}}" x2="{{e.x2}}" y2="{{e.y2}}" style="stroke:{{e.stroke}};stroke-width:{{e.w}};stroke-dasharray:{{e.dash}};stroke-linecap:round;opacity:{{e.op}};pointer-events:none"></line>
+          </sc-for>
+        </g>
+        <sc-for list="{{layerGroups}}" as="g">
+          <g>
+            <polygon points="{{g.plane}}" style="fill:var(--color-surface);fill-opacity:{{g.fillOp}};stroke:{{g.planeStroke}};stroke-width:1;opacity:{{g.op}};pointer-events:none"></polygon>
+            {{g.labelEl}}
+            <sc-for list="{{g.edges}}" as="e">
+              <g style="opacity:{{e.op}};pointer-events:none">
+                <line x1="{{e.x1}}" y1="{{e.y1}}" x2="{{e.x2}}" y2="{{e.y2}}" style="stroke:{{e.stroke}};stroke-width:{{e.w}}"></line>
+                <polygon points="{{e.arrow}}" style="fill:{{e.stroke}}"></polygon>
+              </g>
+            </sc-for>
+            <sc-for list="{{g.nodes}}" as="n">
+              <g transform="{{n.transform}}" onClick="{{n.onClick}}" onPointerEnter="{{n.onEnter}}" onPointerLeave="{{n.onLeave}}" style="cursor:pointer;opacity:{{n.op}}">
+                <rect x="{{n.hx}}" y="{{n.hx}}" width="{{n.hs}}" height="{{n.hs}}" rx="{{n.hrx}}" style="fill:none;stroke:var(--color-accent);stroke-width:1.5;opacity:{{n.halo}}"></rect>
+                <rect x="{{n.nx}}" y="{{n.nx}}" width="{{n.size}}" height="{{n.size}}" rx="{{n.rx}}" style="fill:{{n.fill}};stroke:{{n.stroke}};stroke-width:1.5"></rect>
+                {{n.labelEl}}
+              </g>
+            </sc-for>
+          </g>
+        </sc-for>
+      </svg>
+      <sc-if value="{{showNudge}}" hint-placeholder-val="{{ false }}">
+        <div style="position:absolute;left:50%;bottom:22px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:8px 8px 8px 14px;border-radius:var(--radius-md);background:var(--color-surface);box-shadow:var(--shadow-md);font-size:13px">
+          <span style="color:var(--color-neutral-300);white-space:nowrap">{{nudgeText}}</span>
+          <button class="btn btn-primary" onClick="{{onReveal}}" style="font-size:13px;padding:5px 10px;white-space:nowrap"><i class="ph ph-stack"></i>Reveal depth</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{hasSel}}" hint-placeholder-val="{{ false }}">
+        <div class="card elev-md" style="position:absolute;top:14px;right:14px;width:270px;max-height:calc(100% - 28px);overflow:auto;gap:12px;padding:14px">
+          <div style="display:flex;align-items:flex-start;gap:8px">
+            <div style="flex:1;display:flex;flex-direction:column;gap:3px">
+              <span class="card-kicker">{{sel.kicker}}</span>
+              <span class="card-title">{{sel.label}}</span>
+              <span style="font-size:12px;color:var(--color-neutral-400)">{{sel.sub}}</span>
+            </div>
+            <button class="btn btn-ghost" onClick="{{onBgClick}}" style="width:28px;height:28px;padding:0;color:var(--color-neutral-400)"><i class="ph ph-x"></i></button>
+          </div>
+          <sc-for list="{{sel.groups}}" as="grp">
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <span style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-500);margin-bottom:2px">{{grp.title}}</span>
+              <sc-for list="{{grp.items}}" as="it">
+                <div onClick="{{it.onClick}}" style="display:flex;align-items:center;gap:8px;padding:4px 6px;margin:0 -6px;border-radius:var(--radius-sm);cursor:pointer;font-size:13px" style-hover="background:color-mix(in srgb, var(--color-text) 7%, transparent)">
+                  <span style="font-size:10px;color:var(--color-neutral-500);width:16px">{{it.layerKey}}</span>
+                  <span style="flex:1">{{it.label}}</span>
+                  <span style="font-size:11px;color:var(--color-neutral-500)">{{it.sub}}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;layerSpacing&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:240,&quot;min&quot;:120,&quot;max&quot;:420,&quot;step&quot;:10,&quot;unit&quot;:&quot;px&quot;,&quot;tsType&quot;:&quot;number&quot;},&quot;perspective&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;labels&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;all&quot;,&quot;options&quot;:[&quot;all&quot;,&quot;focused&quot;,&quot;hover&quot;],&quot;tsType&quot;:&quot;'all'|'focused'|'hover'&quot;}}">
+class Component extends DCLogic {
+  static LAYERS = [
+    { key: 'L0', name: 'Components', fill: 'var(--color-accent-600)', stroke: 'var(--color-accent-300)', rx: 0.3 },
+    { key: 'L1', name: 'Resources', fill: 'var(--color-neutral-700)', stroke: 'var(--color-neutral-300)', rx: 0.06 },
+    { key: 'L2', name: 'Owners', fill: 'var(--color-bg)', stroke: 'var(--color-accent-200)', rx: 1 },
+  ];
+  static NODES = [
+    ['web', 'web-app', 0, -250, -130, 'Frontend'], ['mobile', 'mobile-app', 0, -250, 30, 'iOS / Android'],
+    ['gw', 'api-gateway', 0, -110, -50, 'Service'], ['auth', 'auth-service', 0, 30, -160, 'Service'],
+    ['users', 'user-service', 0, 180, -160, 'Service'], ['orders', 'order-service', 0, 40, -20, 'Service'],
+    ['pay', 'payment-service', 0, 190, -30, 'Service'], ['inv', 'inventory-service', 0, 40, 120, 'Service'],
+    ['search', 'search-service', 0, -120, 120, 'Service'], ['notif', 'notification-service', 0, 280, 80, 'Service'],
+    ['analytics', 'analytics-worker', 0, 180, 170, 'Worker'],
+    ['sessions', 'session-cache', 1, 30, -170, 'Redis'], ['usersdb', 'users-db', 1, 190, -150, 'Postgres'],
+    ['ordersdb', 'orders-db', 1, 40, -10, 'Postgres'], ['stripe', 'stripe-api', 1, 200, -20, 'External API'],
+    ['invdb', 'inventory-db', 1, 40, 130, 'Postgres'], ['es', 'search-index', 1, -120, 130, 'Elasticsearch'],
+    ['kafka', 'event-bus', 1, 260, 70, 'Kafka'], ['cdn', 'asset-cdn', 1, -250, -50, 'S3 + CDN'],
+    ['warehouse', 'warehouse', 1, 190, 170, 'Snowflake'],
+    ['t-clients', 'Client Apps', 2, -250, -50, 'Team · A. Kim'], ['t-platform', 'Platform', 2, -80, -60, 'Team · R. Okafor'],
+    ['t-identity', 'Identity', 2, 110, -160, 'Team · M. Chen'], ['t-commerce', 'Commerce', 2, 110, 20, 'Team · S. Patel'],
+    ['t-discovery', 'Discovery', 2, -110, 130, 'Team · L. Moreau'], ['t-data', 'Data', 2, 220, 160, 'Team · J. Alvarez'],
+  ];
+  static EDGES = {
+    dep: 'web>gw mobile>gw gw>auth gw>orders gw>search gw>users auth>users orders>pay orders>inv orders>notif pay>notif search>inv analytics>orders users>notif invdb>es kafka>warehouse',
+    res: 'auth>sessions gw>sessions users>usersdb orders>ordersdb orders>kafka pay>stripe pay>kafka inv>invdb inv>kafka search>es notif>kafka analytics>warehouse analytics>kafka web>cdn mobile>cdn',
+    own: 'web>t-clients mobile>t-clients gw>t-platform notif>t-platform auth>t-identity users>t-identity orders>t-commerce pay>t-commerce inv>t-commerce search>t-discovery analytics>t-data sessions>t-platform cdn>t-platform kafka>t-platform usersdb>t-identity ordersdb>t-commerce stripe>t-commerce invdb>t-commerce es>t-discovery warehouse>t-data',
+  };
+  static REL = {
+    dep: { label: 'Dependencies', span: 'L0 · L1', stroke: 'var(--color-neutral-400)', dash: 'none', out: 'Depends on', in: 'Depended on by' },
+    res: { label: 'Resource usage', span: 'L0 → L1', stroke: 'var(--color-accent-400)', dash: '5 4', out: 'Uses', in: 'Used by' },
+    own: { label: 'Ownership', span: '→ L2', stroke: 'var(--color-accent-200)', dash: '1 4', out: 'Owned by', in: 'Owns' },
+  };
+
+  state = { spin: 0, tilt: 0, pivot: 0, zoom: 1, w: 900, h: 600, focus: 0, visible: [true, true, true],
+    rels: { dep: true, res: true, own: true }, sel: null, hover: null, preset: 'flat', dragging: false };
+
+  constructor(p) {
+    super(p);
+    const C = Component;
+    this.nodes = C.NODES.map(([id, label, layer, x, y, sub]) => ({ id, label, layer, x, y, sub }));
+    this.byId = Object.fromEntries(this.nodes.map(n => [n.id, n]));
+    this.edges = [];
+    for (const type in C.EDGES) C.EDGES[type].split(' ').forEach(s => { const [a, b] = s.split('>'); this.edges.push({ a, b, type }); });
+    this.canvasRef = React.createRef();
+  }
+
+  componentDidMount() {
+    const el = this.canvasRef.current;
+    if (!el) return;
+    this.ro = new ResizeObserver(() => requestAnimationFrame(() => {
+      const w = el.clientWidth, h = el.clientHeight;
+      const first = !this.measured; this.measured = true;
+      this.setState(first ? { w, h, zoom: this.fit(w, h) } : { w, h });
+    }));
+    this.ro.observe(el);
+    this.onWheel = e => { e.preventDefault(); this.setState(s => ({ zoom: Math.max(0.3, Math.min(3, s.zoom * Math.exp(-e.deltaY * 0.0015))) })); };
+    el.addEventListener('wheel', this.onWheel, { passive: false });
+  }
+  componentWillUnmount() { this.ro && this.ro.disconnect(); cancelAnimationFrame(this.raf); const el = this.canvasRef.current; el && el.removeEventListener('wheel', this.onWheel); }
+
+  fit(w, h) { return Math.max(0.4, Math.min((w - 80) / 700, (h - 80) / 460)); }
+
+  animateTo(target, dur = 750) {
+    cancelAnimationFrame(this.raf);
+    const from = { spin: this.state.spin, tilt: this.state.tilt, pivot: this.state.pivot, zoom: this.state.zoom };
+    let ds = (target.spin ?? from.spin) - from.spin;
+    ds = Math.atan2(Math.sin(ds), Math.cos(ds));
+    const to = { ...from, ...target, spin: from.spin + ds };
+    const t0 = performance.now();
+    const step = () => {
+      const k = Math.min(1, (performance.now() - t0) / dur);
+      const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+      const s = {};
+      for (const key in to) s[key] = from[key] + (to[key] - from[key]) * e;
+      this.setState(s);
+      if (k < 1) this.raf = requestAnimationFrame(step);
+    };
+    this.raf = requestAnimationFrame(step);
+  }
+
+  preset(name) {
+    const f = this.fit(this.state.w, this.state.h);
+    this.setState({ preset: name });
+    if (name === 'flat') this.animateTo({ spin: 0, tilt: 0, pivot: this.state.focus, zoom: f });
+    if (name === 'stack') this.animateTo({ spin: -0.38, tilt: -1.0, pivot: 1, zoom: f * 0.62 });
+    if (name === 'side') this.animateTo({ spin: 0, tilt: -1.42, pivot: 1, zoom: f * 0.75 });
+  }
+
+  onDown = e => {
+    if (e.button !== 0) return;
+    cancelAnimationFrame(this.raf);
+    const sx = e.clientX, sy = e.clientY, s0 = this.state.spin, t0 = this.state.tilt;
+    this.dragged = false;
+    const move = ev => {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      if (!this.dragged && Math.hypot(dx, dy) < 4) return;
+      if (!this.dragged) { this.dragged = true; this.setState({ dragging: true, preset: null }); }
+      this.setState({ spin: s0 + dx * 0.006, tilt: Math.max(-1.55, Math.min(1.55, t0 + dy * 0.006)) });
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); this.setState({ dragging: false }); setTimeout(() => { this.dragged = false; }, 0); };
+    window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
+  };
+
+  select(id) { this.setState({ sel: id }); }
+
+  renderVals() {
+    const C = Component, st = this.state, P = this.props;
+    const sp = P.layerSpacing ?? 240, persp = P.perspective ?? true, labelMode = P.labels ?? 'all';
+    const { w, h, zoom, focus, visible, rels } = st;
+    const cs = Math.cos(st.spin), ss = Math.sin(st.spin), ct = Math.cos(st.tilt), sn = Math.sin(st.tilt);
+    const D = 1700, cx = w / 2, cy = h / 2;
+    const proj = (x, y, layer) => {
+      const z = (layer - st.pivot) * sp;
+      const x1 = x * cs - y * ss, y1 = x * ss + y * cs;
+      const y2 = y1 * ct - z * sn, z2 = y1 * sn + z * ct;
+      const s = persp ? D / Math.max(200, D + z2) : 1;
+      return { x: cx + x1 * s * zoom, y: cy + y2 * s * zoom, z: z2, s };
+    };
+    const reveal = Math.max(0, Math.min(1, (1 - Math.abs(ct)) / 0.09));
+    const layerOp = i => !visible[i] ? 0 : (i === focus ? 1 : reveal);
+
+    const liveEdges = this.edges.filter(e => rels[e.type] && layerOp(this.byId[e.a].layer) > 0 && layerOp(this.byId[e.b].layer) > 0);
+    const act = st.sel || st.hover;
+    const related = new Set();
+    if (act) { related.add(act); liveEdges.forEach(e => { if (e.a === act) related.add(e.b); if (e.b === act) related.add(e.a); }); }
+
+    const pos = {};
+    this.nodes.forEach(n => { pos[n.id] = proj(n.x, n.y, n.layer); });
+    const R = 8;
+    const nodeR = id => R * pos[id].s * Math.min(1.4, Math.max(0.7, zoom));
+
+    const edgeOut = e => {
+      const A = pos[e.a], B = pos[e.b], rel = C.REL[e.type];
+      const hot = act && (e.a === act || e.b === act);
+      const cross = this.byId[e.a].layer !== this.byId[e.b].layer;
+      let op = Math.min(layerOp(this.byId[e.a].layer), layerOp(this.byId[e.b].layer)) * (cross ? reveal : 1);
+      op *= act ? (hot ? 1 : 0.1) : (cross ? 0.7 : 0.55);
+      let arrow = '';
+      if (e.type === 'dep') {
+        const dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+        const r = nodeR(e.b) + 3, tx = B.x - ux * r, ty = B.y - uy * r, bx = tx - ux * 7, by = ty - uy * 7;
+        arrow = `${tx},${ty} ${bx - uy * 3.5},${by + ux * 3.5} ${bx + uy * 3.5},${by - ux * 3.5}`;
+      }
+      return { x1: A.x, y1: A.y, x2: B.x, y2: B.y, stroke: hot ? (e.type === 'dep' ? 'var(--color-neutral-200)' : rel.stroke) : rel.stroke,
+        w: hot ? 1.8 : 1.1, dash: rel.dash, op, arrow, cross };
+    };
+    const allEdges = liveEdges.map(e => ({ ...edgeOut(e), layer: this.byId[e.a].layer }));
+    const crossEdges = allEdges.filter(e => e.cross && e.op > 0.01);
+
+    const PX = 340, PY = 220;
+    const layerGroups = C.LAYERS.map((L, i) => {
+      const op = layerOp(i);
+      const corners = [[-PX, -PY], [PX, -PY], [PX, PY], [-PX, PY]].map(([x, y]) => proj(x, y, i));
+      const depth = corners.reduce((a, c) => a + c.z, 0) / 4;
+      const nodes = this.nodes.filter(n => n.layer === i && op > 0).map(n => {
+        const p = pos[n.id], r = nodeR(n.id), isRel = related.has(n.id), isSel = st.sel === n.id;
+        const nop = op * (act ? (isRel ? 1 : 0.2) : 1);
+        let lop = labelMode === 'all' ? (i === focus ? 1 : reveal) : labelMode === 'focused' ? (i === focus ? 1 : 0) : 0;
+        if (act && isRel) lop = 1;
+        return { id: n.id, label: n.label, z: p.z, transform: `translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})`,
+          nx: -r, size: 2 * r, rx: r * L.rx, hx: -r - 4, hs: 2 * r + 8, hrx: (r + 4) * L.rx, halo: isSel ? 0.9 : 0,
+          fill: L.fill, stroke: L.stroke, op: nop, labelOp: lop, fs: (12 * p.s).toFixed(1), ly: r + 14 * p.s,
+          onClick: ev => { ev.stopPropagation(); if (!this.dragged) this.select(n.id); },
+          labelEl: React.createElement('text', { x: 0, y: r + 14 * p.s, style: { fontSize: (12 * p.s).toFixed(1) + 'px', fill: 'var(--color-text)', opacity: lop, textAnchor: 'middle', paintOrder: 'stroke', stroke: 'var(--color-bg)', strokeWidth: 3, strokeLinejoin: 'round', pointerEvents: 'none' } }, n.label),
+          onEnter: () => !this.dragged && this.setState({ hover: n.id }), onLeave: () => this.setState({ hover: null }) };
+      }).sort((a, b) => b.z - a.z);
+      const lc = corners[0];
+      return { depth, op, plane: corners.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' '),
+        fillOp: i === focus ? 0.35 : 0.3, planeStroke: i === focus ? 'var(--color-accent-700)' : 'var(--color-neutral-800)',
+        lx: lc.x + 10, ly: lc.y - 10, label: `${L.key} · ${L.name.toUpperCase()}`, labelOp: op * (i === focus ? 1 : 0.8),
+        labelColor: i === focus ? 'var(--color-accent-300)' : 'var(--color-neutral-400)',
+        labelEl: React.createElement('text', { x: lc.x + 10, y: lc.y - 10, style: { fontSize: 12, fill: i === focus ? 'var(--color-accent-300)' : 'var(--color-neutral-400)', opacity: op * (i === focus ? 1 : 0.8), letterSpacing: '0.06em', pointerEvents: 'none' } }, `${L.key} · ${L.name.toUpperCase()}`),
+        edges: allEdges.filter(e => !e.cross && e.layer === i && e.op > 0.01), nodes };
+    }).filter(g => g.op > 0.001).sort((a, b) => b.depth - a.depth);
+
+    const layerRows = C.LAYERS.map((L, i) => ({ key: L.key, name: L.name, fill: L.fill, stroke: L.stroke, rx: L.rx * 5.5,
+      count: this.nodes.filter(n => n.layer === i).length, op: visible[i] ? 1 : 0.45,
+      bg: i === focus ? 'color-mix(in srgb, var(--color-accent) 10%, transparent)' : 'transparent',
+      ring: i === focus ? 'inset 0 0 0 1px var(--color-accent-700)' : 'none',
+      eye: visible[i] ? 'ph ph-eye' : 'ph ph-eye-slash',
+      onFocus: () => { const v = [...visible]; v[i] = true; this.setState({ focus: i, visible: v }); this.animateTo({ pivot: i }, 600); },
+      onToggle: ev => { ev.stopPropagation(); if (i === focus) return; const v = [...visible]; v[i] = !v[i]; this.setState({ visible: v }); } }));
+
+    const relRows = Object.keys(C.REL).map(k => ({ ...C.REL[k], op: rels[k] ? 1 : 0.45, check: rels[k] ? 'ph ph-check-square' : 'ph ph-square',
+      onToggle: () => this.setState({ rels: { ...rels, [k]: !rels[k] } }) }));
+
+    const presets = [['flat', '2D', 'ph ph-square'], ['stack', 'Stack', 'ph ph-stack'], ['side', 'Side', 'ph ph-rows']].map(([id, label, icon]) => ({
+      label, icon, color: st.preset === id ? 'var(--color-accent)' : 'var(--color-text)',
+      ring: st.preset === id ? 'inset 0 0 0 1px var(--color-accent)' : 'none', onClick: () => this.preset(id) }));
+
+    let sel = null;
+    if (st.sel) {
+      const n = this.byId[st.sel], groups = [];
+      for (const k in C.REL) {
+        ['out', 'in'].forEach(dir => {
+          const items = this.edges.filter(e => e.type === k && (dir === 'out' ? e.a === n.id : e.b === n.id)).map(e => {
+            const o = this.byId[dir === 'out' ? e.b : e.a];
+            return { label: o.label, sub: o.sub, layerKey: C.LAYERS[o.layer].key, onClick: () => this.select(o.id) };
+          });
+          if (items.length) groups.push({ title: C.REL[k][dir], items });
+        });
+      }
+      sel = { label: n.label, sub: n.sub, kicker: `${C.LAYERS[n.layer].key} · ${C.LAYERS[n.layer].name}`, groups };
+    }
+
+    const hidden = this.edges.filter(e => rels[e.type] && (this.byId[e.a].layer !== focus || this.byId[e.b].layer !== focus)).length;
+    return {
+      w, h, canvasRef: this.canvasRef, onDown: this.onDown, cursor: st.dragging ? 'grabbing' : 'grab',
+      onBgClick: () => { if (!this.dragged) this.setState({ sel: null }); },
+      crossEdges, layerGroups, layerRows, relRows, presets, hasSel: !!sel, sel: sel || { groups: [] },
+      showNudge: reveal < 0.05 && !st.dragging && hidden > 0,
+      nudgeText: `${hidden} relationships reach into other layers`, onReveal: () => this.preset('stack'),
+    };
+  }
+}
+</script>
+</body>
+</html>
