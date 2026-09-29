@@ -37,4 +37,6 @@ const data: GraphData = {
 </div>;
 ```
 
-The component includes gridded 3D shelves, layer-specific node shapes, relationship lines, bloom, camera presets, and an optional 2D owners panel. The test rail uses the full v3 prototype fixture. Camera view changes ease over 900 ms; selecting a layer eases into its top view over 1100 ms. In a focused top view, higher layers fade out and lower layers remain faint. Rotating away from overhead restores the full stack; pass `onViewChange` to keep a controlled view selector in sync. Pass a new `cameraRequestKey` value to recenter the camera when the selected view and layer have not changed. Animated edge flow remains to be ported.
+The component includes gridded 3D shelves, layer-specific node shapes, relationship lines, animated edge flow, bloom, camera presets, and an optional 2D owners panel. The test rail uses the full v3 prototype fixture. Each edge is directed from `source` to `target`; the flow particle travels in that direction. Set `flow={false}` to turn off the particles.
+
+Camera view changes ease over 900 ms; selecting a layer eases into its top view over 1100 ms. In a focused top view, higher layers fade out and lower layers remain faint. Rotating away from overhead restores the full stack; pass `onViewChange` to keep a controlled view selector in sync. Pass a new `cameraRequestKey` value to recenter the camera when the selected view and layer have not changed.

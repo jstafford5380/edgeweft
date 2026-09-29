@@ -14,6 +14,7 @@ export function App() {
   const [visibleLayerIds, setVisibleLayerIds] = useState(sampleGraph.layers.map((layer) => layer.id));
   const [visibleEdgeTypes, setVisibleEdgeTypes] = useState(relationships.map((type) => type.id));
   const [showOwners, setShowOwners] = useState(true);
+  const [flow, setFlow] = useState(true);
   const [layerSpacing, setLayerSpacing] = useState(240);
   const [view, setView] = useState<GraphView>('3d');
   const [focusedLayerId, setFocusedLayerId] = useState<string | null>('components');
@@ -52,13 +53,15 @@ export function App() {
         </button></section>
         <section><h2>Relationships</h2>{relationships.map((type) => <button key={type.id} className={`rail-relation${visibleEdgeTypes.includes(type.id) ? '' : ' is-muted'}`} onClick={() => toggleType(type.id)}>
           <span className={`rail-line ${type.line}`} /><span>{type.label}</span><small>{type.span}</small><span className="rail-check">{visibleEdgeTypes.includes(type.id) ? '☑' : '□'}</span>
-        </button>)}</section>
+        </button>)}<button className={`rail-relation${flow ? '' : ' is-muted'}`} onClick={() => setFlow(!flow)} aria-label="Animated flow" aria-pressed={flow}>
+          <span className="rail-line solid" /><span>Flow</span><small>source → target</small><span className="rail-check">{flow ? '☑' : '□'}</span>
+        </button></section>
         <section className="rail-controls"><h2>Layer spacing <span>{layerSpacing}</span></h2><input aria-label="Layer spacing" type="range" min="140" max="400" step="10" value={layerSpacing} onChange={(event) => setLayerSpacing(Number(event.target.value))} /></section>
         <div className="rail-help">Drag to orbit · Shift-drag to pan<br />Scroll to zoom<br />Choose a layer for its top view</div>
       </aside>
       <div className="rail-content"><DependencyGraph data={sampleGraph} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
         visibleLayerIds={visibleLayerIds} visibleEdgeTypes={visibleEdgeTypes} showOwners={showOwners} layerSpacing={layerSpacing}
-        view={view} focusedLayerId={focusedLayerId} cameraRequestKey={cameraRequestKey} onViewChange={setView} /></div>
+        view={view} focusedLayerId={focusedLayerId} cameraRequestKey={cameraRequestKey} onViewChange={setView} flow={flow} /></div>
     </main>
   </div>;
 }

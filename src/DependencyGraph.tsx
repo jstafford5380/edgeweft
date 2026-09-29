@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Edges, Line, OrbitControls } from '@react-three/drei';
-import { DoubleSide, Group, Material, Vector2, Vector3 } from 'three';
+import { ACESFilmicToneMapping, DoubleSide, Group, Material, Mesh, Quaternion, Vector2, Vector3 } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -25,6 +25,7 @@ export interface DependencyGraphProps {
   focusedLayerId?: string | null;
   cameraRequestKey?: number;
   onViewChange?: (view: GraphView) => void;
+  flow?: boolean;
   bloom?: boolean;
   className?: string;
 }
@@ -155,14 +156,14 @@ function Bloom({ enabled }: { enabled: boolean }) {
   const composer = useMemo(() => {
     const engine = new EffectComposer(gl);
     engine.addPass(new RenderPass(scene, camera));
-    const glow = new UnrealBloomPass(new Vector2(size.width, size.height), 0.36, 0.45, 0.55);
+    const glow = new UnrealBloomPass(new Vector2(size.width, size.height), 0.75, 0.55, 0.18);
     engine.addPass(glow);
     engine.addPass(new OutputPass());
     return { engine, glow };
   }, [gl, scene, camera]);
   useEffect(() => {
     composer.engine.setSize(size.width, size.height);
-    composer.glow.strength = enabled ? 0.36 : 0;
+    composer.glow.strength = enabled ? 0.75 : 0;
   }, [composer, size.width, size.height, enabled]);
   useEffect(() => () => composer.engine.dispose(), [composer]);
   useFrame(() => composer.engine.render(), 1);
@@ -182,7 +183,7 @@ function Shelf({ index, spacing }: { index: number; spacing: number }) {
     </mesh>
     <lineSegments position={[0, y + 5, 0]}>
       <bufferGeometry><bufferAttribute attach="attributes-position" args={[grid, 3]} /></bufferGeometry>
-      <lineBasicMaterial color="#9d90e7" transparent opacity={0.27} depthWrite={false} />
+      <lineBasicMaterial color="#796cbf" transparent opacity={0.28} depthWrite={false} />
     </lineSegments>
     <Line points={outline} color="#9180e8" lineWidth={9} transparent opacity={0.13} />
     <Line points={outline} color="#d2cefd" lineWidth={1.8} transparent opacity={0.95} />
@@ -215,6 +216,36 @@ function Node({ node, index, spacing, selected, dimmed, onSelect }: {
       <boxGeometry args={[72, 1, 40]} /><meshBasicMaterial color="#423a6a" transparent opacity={opacity} />
     </mesh>}
   </group>;
+}
+
+function FlowDot({ from, to, phase, active }: {
+  from: [number, number, number]; to: [number, number, number]; phase: number; active: boolean;
+}) {
+  const dot = useRef<Mesh>(null);
+  useFrame(({ clock }) => {
+    const progress = (clock.getElapsedTime() * 0.3 + phase) % 1;
+    dot.current?.position.set(
+      from[0] + (to[0] - from[0]) * progress,
+      from[1] + (to[1] - from[1]) * progress,
+      from[2] + (to[2] - from[2]) * progress,
+    );
+  });
+  return <mesh ref={dot}>
+    <sphereGeometry args={[4, 10, 8]} />
+    <meshBasicMaterial color="#eee9ff" transparent opacity={active ? 1 : 0.08} depthWrite={false} />
+  </mesh>;
+}
+
+function EdgeArrow({ from, to, active }: {
+  from: [number, number, number]; to: [number, number, number]; active: boolean;
+}) {
+  const direction = new Vector3(to[0] - from[0], to[1] - from[1], to[2] - from[2]).normalize();
+  const position: [number, number, number] = [to[0] - direction.x * 27, to[1] - direction.y * 27, to[2] - direction.z * 27];
+  const orientation = new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), direction);
+  return <mesh position={position} quaternion={orientation}>
+    <coneGeometry args={[4.5, 12, 10]} />
+    <meshBasicMaterial color="#dcd4ff" transparent opacity={active ? 0.9 : 0.04} depthWrite={false} />
+  </mesh>;
 }
 
 function SceneLabels({ data, indices, spacing, visible, selected, stage, nodeLabels, layerLabels, fades, focus }: {
@@ -313,7 +344,7 @@ function OwnerPaths({ data, indices, spacing, visible, selected, refs, fades }: 
 }
 
 export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, visibleLayerIds, visibleEdgeTypes,
-  showOwners = true, layerSpacing = 240, view = '3d', focusedLayerId = null, cameraRequestKey = 0, onViewChange, bloom = true, className }: DependencyGraphProps) {
+  showOwners = true, layerSpacing = 240, view = '3d', focusedLayerId = null, cameraRequestKey = 0, onViewChange, flow = true, bloom = true, className }: DependencyGraphProps) {
   const board = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const sceneRoot = useRef<Group>(null);
@@ -349,10 +380,10 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
   return <div ref={board} className={`dgt-board${showPanel ? '' : ' no-owners'}${className ? ` ${className}` : ''}`}>
     <div ref={stage} className="dgt-stage">
       <Canvas camera={{ position: [-670, 1225, 1235], fov: 34, near: 5, far: 9000 }}
-        gl={{ antialias: true, toneMappingExposure: 1.05 }} onPointerMissed={() => onSelectNode?.(null)}>
+        gl={{ antialias: true, toneMapping: ACESFilmicToneMapping, toneMappingExposure: 1.05 }} onPointerMissed={() => onSelectNode?.(null)}>
         <color attach="background" args={[BG]} /><fog attach="fog" args={[BG, 1900, 4200]} />
-        <ambientLight intensity={1.1} /><directionalLight position={[-400, 900, 600]} intensity={1.7} />
-        <pointLight position={[0, 300, 300]} intensity={18000} color="#968ae0" />
+        <ambientLight intensity={0.55} /><directionalLight position={[-400, 900, 600]} intensity={1.1} />
+        <pointLight position={[0, 300, 300]} intensity={1.2} color="#968ae0" />
         <CameraRig view={view} focus={focus} spacing={layerSpacing} requestKey={cameraRequestKey} overheadFocused={focusedOverhead}
           onExitOverhead={() => { setOrbitExited(true); onViewChange?.('3d'); return !!onViewChange; }} />
         <lineSegments position={[0, -100, 0]}>
@@ -377,6 +408,9 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
             {same && <Line points={points} color="#a99cf4" lineWidth={7} transparent opacity={active ? 0.14 : 0.02} />}
             <Line points={points} color={same ? '#d2cefd' : '#b5abfc'} lineWidth={same ? 1.8 : 1.1}
               transparent opacity={active ? same ? 0.85 : 0.45 : 0.04} dashed={!same} dashSize={8} gapSize={6} />
+            {same && <EdgeArrow key={active ? 'active-arrow' : 'dimmed-arrow'} from={points[0]} to={points[1]} active={active} />}
+            {flow && <FlowDot key={active ? 'active-flow' : 'dimmed-flow'} from={points[0]} to={points[1]}
+              phase={(index * 0.137) % 1} active={active} />}
           </group>;
         })}
         </group>

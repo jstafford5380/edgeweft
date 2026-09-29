@@ -16,7 +16,9 @@ export interface GraphNode {
 }
 
 export interface GraphEdge {
+  /** The node where this directed relationship begins. */
   source: string;
+  /** The node it points to; animated flow travels toward this node. */
   target: string;
   type?: string;
 }
