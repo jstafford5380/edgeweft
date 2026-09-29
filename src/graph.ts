@@ -1,8 +1,9 @@
 import type { GraphData, GraphEdge, GraphNode } from './types';
 
-export function getConnectedNodes(nodeId: string, edges: GraphEdge[]): Set<string> {
+export function getConnectedNodes(nodeId: string, edges: GraphEdge[], visibleEdgeTypes?: ReadonlySet<string>): Set<string> {
   const connected = new Set([nodeId]);
   for (const edge of edges) {
+    if (visibleEdgeTypes && !visibleEdgeTypes.has(edge.type ?? 'dependency')) continue;
     if (edge.source === nodeId) connected.add(edge.target);
     if (edge.target === nodeId) connected.add(edge.source);
   }

@@ -17,6 +17,11 @@ describe('graph helpers', () => {
     expect([...getConnectedNodes('b', data.edges)]).toEqual(['b', 'a']);
   });
 
+  it('only highlights neighbors on visible relationship types', () => {
+    const edges = [...data.edges, { source: 'a', target: 'c', type: 'call' }];
+    expect([...getConnectedNodes('a', edges, new Set(['call']))]).toEqual(['a', 'c']);
+  });
+
   it('reports references that cannot be rendered', () => {
     expect(validateGraph(data)).toEqual([]);
     expect(validateGraph({ ...data, edges: [{ source: 'a', target: 'missing' }] }))

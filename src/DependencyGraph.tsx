@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { Edges, Line, OrbitControls } from '@react-three/drei';
-import { ACESFilmicToneMapping, DoubleSide, Group, Material, Mesh, Quaternion, Vector2, Vector3 } from 'three';
+import { ACESFilmicToneMapping, DoubleSide, Group, Material, Mesh, Object3D, Quaternion, Vector2, Vector3 } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -140,10 +140,17 @@ function SceneFader({ root, fades, count, focus }: {
       child.traverse((object) => {
         const objectMaterials = 'material' in object ? (object as { material: Material | Material[] }).material : undefined;
         if (!objectMaterials) return;
+        let selectionOpacity = 1;
+        let ancestor: Object3D | null = object;
+        while (ancestor) {
+          if (typeof ancestor.userData.selectionOpacity === 'number') selectionOpacity *= ancestor.userData.selectionOpacity;
+          if (ancestor === child) break;
+          ancestor = ancestor.parent;
+        }
         for (const material of Array.isArray(objectMaterials) ? objectMaterials : [objectMaterials]) {
           if (!baseOpacity.current.has(material)) baseOpacity.current.set(material, material.opacity);
           material.transparent = true;
-          material.opacity = (baseOpacity.current.get(material) ?? 1) * opacity;
+          material.opacity = (baseOpacity.current.get(material) ?? 1) * opacity * selectionOpacity;
         }
       });
     }
@@ -156,14 +163,14 @@ function Bloom({ enabled }: { enabled: boolean }) {
   const composer = useMemo(() => {
     const engine = new EffectComposer(gl);
     engine.addPass(new RenderPass(scene, camera));
-    const glow = new UnrealBloomPass(new Vector2(size.width, size.height), 0.75, 0.55, 0.18);
+    const glow = new UnrealBloomPass(new Vector2(size.width, size.height), 0.65, 0.55, 0.18);
     engine.addPass(glow);
     engine.addPass(new OutputPass());
     return { engine, glow };
   }, [gl, scene, camera]);
   useEffect(() => {
     composer.engine.setSize(size.width, size.height);
-    composer.glow.strength = enabled ? 0.75 : 0;
+    composer.glow.strength = enabled ? 0.65 : 0;
   }, [composer, size.width, size.height, enabled]);
   useEffect(() => () => composer.engine.dispose(), [composer]);
   useFrame(() => composer.engine.render(), 1);
@@ -199,9 +206,8 @@ function Node({ node, index, spacing, selected, dimmed, onSelect }: {
 }) {
   const kind = index === 0 ? 'resource' : index === 1 ? 'component' : index === 2 ? 'bff' : 'app';
   const rise = kind === 'resource' ? 16 : kind === 'app' ? 8 : 13;
-  const opacity = dimmed ? 0.13 : 0.96;
   const click = (event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); onSelect(node.id); };
-  return <group position={[node.x, index * spacing + rise, node.z]}>
+  return <group position={[node.x, index * spacing + rise, node.z]} userData={{ selectionOpacity: dimmed ? 0.14 : 1 }}>
     <mesh onClick={click}>
       {kind === 'resource' ? <cylinderGeometry args={[17, 17, 24, 40]} />
         : kind === 'bff' ? <cylinderGeometry args={[22, 22, 18, 6]} />
@@ -209,17 +215,17 @@ function Node({ node, index, spacing, selected, dimmed, onSelect }: {
             : <boxGeometry args={[92, 18, 30]} />}
       <meshStandardMaterial color={selected ? '#eee0ae' : kind === 'resource' ? '#595d6c' : '#796cbf'}
         emissive={selected ? '#d7ba5b' : '#968ae0'} emissiveIntensity={selected ? 0.8 : 0.55}
-        metalness={0.3} roughness={0.34} transparent opacity={opacity} />
+        metalness={0.3} roughness={0.34} transparent opacity={0.96} />
       <Edges threshold={20} color={selected ? '#fff1ba' : '#d2cefd'} />
     </mesh>
     {kind === 'app' && <mesh position={[0, 4, 0]}>
-      <boxGeometry args={[72, 1, 40]} /><meshBasicMaterial color="#423a6a" transparent opacity={opacity} />
+      <boxGeometry args={[72, 1, 40]} /><meshBasicMaterial color="#423a6a" transparent opacity={0.9} />
     </mesh>}
   </group>;
 }
 
-function FlowDot({ from, to, phase, active }: {
-  from: [number, number, number]; to: [number, number, number]; phase: number; active: boolean;
+function FlowDot({ from, to, phase }: {
+  from: [number, number, number]; to: [number, number, number]; phase: number;
 }) {
   const dot = useRef<Mesh>(null);
   useFrame(({ clock }) => {
@@ -232,24 +238,24 @@ function FlowDot({ from, to, phase, active }: {
   });
   return <mesh ref={dot}>
     <sphereGeometry args={[4, 10, 8]} />
-    <meshBasicMaterial color="#eee9ff" transparent opacity={active ? 1 : 0.08} depthWrite={false} />
+    <meshBasicMaterial color="#eee9ff" transparent opacity={1} depthWrite={false} />
   </mesh>;
 }
 
-function EdgeArrow({ from, to, active }: {
-  from: [number, number, number]; to: [number, number, number]; active: boolean;
+function EdgeArrow({ from, to }: {
+  from: [number, number, number]; to: [number, number, number];
 }) {
   const direction = new Vector3(to[0] - from[0], to[1] - from[1], to[2] - from[2]).normalize();
   const position: [number, number, number] = [to[0] - direction.x * 27, to[1] - direction.y * 27, to[2] - direction.z * 27];
   const orientation = new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), direction);
   return <mesh position={position} quaternion={orientation}>
     <coneGeometry args={[4.5, 12, 10]} />
-    <meshBasicMaterial color="#dcd4ff" transparent opacity={active ? 0.9 : 0.04} depthWrite={false} />
+    <meshBasicMaterial color="#dcd4ff" transparent opacity={0.9} depthWrite={false} />
   </mesh>;
 }
 
-function SceneLabels({ data, indices, spacing, visible, selected, stage, nodeLabels, layerLabels, fades, focus }: {
-  data: GraphData; indices: Map<string, number>; spacing: number; visible: Set<string>; selected: string | null;
+function SceneLabels({ data, indices, spacing, visible, related, stage, nodeLabels, layerLabels, fades, focus }: {
+  data: GraphData; indices: Map<string, number>; spacing: number; visible: Set<string>; related: Set<string> | null;
   stage: React.RefObject<HTMLDivElement | null>;
   nodeLabels: React.RefObject<Map<string, HTMLDivElement>>;
   layerLabels: React.RefObject<Map<string, HTMLDivElement>>;
@@ -257,15 +263,6 @@ function SceneLabels({ data, indices, spacing, visible, selected, stage, nodeLab
   focus: number | null;
 }) {
   const point = useMemo(() => new Vector3(), []);
-  const related = useMemo(() => {
-    if (!selected) return null;
-    const set = getConnectedNodes(selected, data.edges);
-    for (const link of data.ownership ?? []) {
-      if (link.ownerId === selected) set.add(link.nodeId);
-      if (link.nodeId === selected) set.add(link.ownerId);
-    }
-    return set;
-  }, [selected, data.edges, data.ownership]);
   const tick = useRef(0);
   useFrame(({ camera }) => {
     if (++tick.current % 2 || !stage.current) return;
@@ -362,13 +359,13 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
   const nodes = useMemo(() => new Map(data.nodes.map((node) => [node.id, node])), [data.nodes]);
   const related = useMemo(() => {
     if (!selectedNodeId) return null;
-    const set = getConnectedNodes(selectedNodeId, data.edges);
+    const set = getConnectedNodes(selectedNodeId, data.edges, edgeTypes);
     for (const link of data.ownership ?? []) {
       if (link.ownerId === selectedNodeId) set.add(link.nodeId);
       if (link.nodeId === selectedNodeId) set.add(link.ownerId);
     }
     return set;
-  }, [selectedNodeId, data.edges, data.ownership]);
+  }, [selectedNodeId, data.edges, data.ownership, edgeTypes]);
   const focus = focusedLayerId ? indices.get(focusedLayerId) ?? -1 : view === 'top' ? Math.min(1, data.layers.length - 1) : -1;
   const focusedOverhead = view === 'top' && focus >= 0 && !orbitExited;
   const fadeFocus = focusedOverhead ? focus : null;
@@ -404,18 +401,18 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
           const same = ai === bi;
           const active = !selectedNodeId || edge.source === selectedNodeId || edge.target === selectedNodeId;
           const points: [number, number, number][] = [[a.x, ai * layerSpacing + (same ? 7 : 20), a.z], [b.x, bi * layerSpacing + (same ? 7 : 20), b.z]];
-          return <group key={`${edge.source}-${edge.target}-${index}`} userData={{ fadeLayer: ai, fadeOtherLayer: bi }}>
-            {same && <Line points={points} color="#a99cf4" lineWidth={7} transparent opacity={active ? 0.14 : 0.02} />}
+          return <group key={`${edge.source}-${edge.target}-${index}`}
+            userData={{ fadeLayer: ai, fadeOtherLayer: bi, selectionOpacity: active ? 1 : 0.07 }}>
+            {same && <Line points={points} color="#a99cf4" lineWidth={7} transparent opacity={0.14} />}
             <Line points={points} color={same ? '#d2cefd' : '#b5abfc'} lineWidth={same ? 1.8 : 1.1}
-              transparent opacity={active ? same ? 0.85 : 0.45 : 0.04} dashed={!same} dashSize={8} gapSize={6} />
-            {same && <EdgeArrow key={active ? 'active-arrow' : 'dimmed-arrow'} from={points[0]} to={points[1]} active={active} />}
-            {flow && <FlowDot key={active ? 'active-flow' : 'dimmed-flow'} from={points[0]} to={points[1]}
-              phase={(index * 0.137) % 1} active={active} />}
+              transparent opacity={same ? 0.85 : 0.45} dashed={!same} dashSize={8} gapSize={6} />
+            {same && <EdgeArrow from={points[0]} to={points[1]} />}
+            {flow && <FlowDot from={points[0]} to={points[1]} phase={(index * 0.137) % 1} />}
           </group>;
         })}
         </group>
         <SceneFader root={sceneRoot} fades={fades} count={data.layers.length} focus={fadeFocus} />
-        <SceneLabels data={data} indices={indices} spacing={layerSpacing} visible={visible} selected={selectedNodeId}
+        <SceneLabels data={data} indices={indices} spacing={layerSpacing} visible={visible} related={related}
           stage={stage} nodeLabels={nodeLabels} layerLabels={layerLabels} fades={fades} focus={fadeFocus} />
         {showPanel && <OwnerPaths data={data} indices={indices} spacing={layerSpacing} visible={visible} selected={selectedNodeId} refs={refs} fades={fades} />}
         <Bloom enabled={bloom} />
