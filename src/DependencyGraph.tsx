@@ -6,10 +6,10 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { cameraPoseForView, interpolateCameraPose, layerZOffset, type CameraPose, type GraphView } from './camera';
+import { cameraPoseForView, easeCubicInOut, interpolateCameraPose, layerZOffset, type CameraPose, type GraphView } from './camera';
 import { getConnectedNodes, validateGraph } from './graph';
-import { layoutGraph, type PositionedGraphData, type PositionedGraphNode } from './layout';
-import type { GraphData } from './types';
+import { layoutGraph, type GraphLayout, type PositionedGraphData, type PositionedGraphNode } from './layout';
+import type { GraphData, GraphNodeKind } from './types';
 import './style.css';
 
 export type { GraphView } from './camera';
@@ -29,10 +29,34 @@ export interface DependencyGraphProps {
   onViewChange?: (view: GraphView) => void;
   flow?: boolean;
   bloom?: boolean;
+  /** Play the opening top-shelf-to-3D camera move on mount. Defaults to true for the 3D view. */
+  introAnimation?: boolean;
   className?: string;
 }
 
 const BG = '#10111e';
+type MotionPositions = React.RefObject<Map<string, Vector3>>;
+
+function nodeRise(kind: GraphNodeKind): number {
+  return kind === 'resource' ? 16 : kind === 'app' ? 8 : 13;
+}
+
+function labelRise(kind: GraphNodeKind): number {
+  return kind === 'resource' ? 49 : kind === 'bff' ? 46 : kind === 'app' ? 31 : 36;
+}
+
+function GraphMotion({ targets, positions }: { targets: Map<string, Vector3>; positions: MotionPositions }) {
+  useFrame((_, delta) => {
+    const blend = 1 - Math.exp(-9 * delta);
+    for (const [id, target] of targets) {
+      const current = positions.current.get(id);
+      if (current) current.lerp(target, blend);
+      else positions.current.set(id, target.clone());
+    }
+    for (const id of positions.current.keys()) if (!targets.has(id)) positions.current.delete(id);
+  }, -2);
+  return null;
+}
 function shelfGrid(width: number, depth: number): Float32Array {
   const values: number[] = [];
   for (let x = -width / 2 + 40; x < width / 2; x += 40) values.push(x, 0, -depth / 2, x, 0, depth / 2);
@@ -47,9 +71,15 @@ function groundGrid(width: number, depth: number): Float32Array {
   return new Float32Array(values);
 }
 
-function CameraRig({ view, focus, spacing, zSpacing, layerCount, requestKey, overheadFocused, onExitOverhead, planeWidth, planeDepth }: {
+type IntroPhase = 'hold' | 'reveal' | 'done';
+
+function CameraRig({ view, focus, spacing, zSpacing, layerCount, requestKey, overheadFocused, onExitOverhead,
+  introPhase, introProgress, setIntroPhase, planeWidth, planeDepth }: {
   view: GraphView; focus: number; spacing: number; zSpacing: number; layerCount: number;
-  requestKey: number; overheadFocused: boolean; onExitOverhead: () => boolean; planeWidth: number; planeDepth: number;
+  requestKey: number; overheadFocused: boolean; onExitOverhead: () => boolean;
+  introPhase: IntroPhase; introProgress: React.RefObject<number>;
+  setIntroPhase: React.Dispatch<React.SetStateAction<IntroPhase>>;
+  planeWidth: number; planeDepth: number;
 }) {
   const { camera, size } = useThree();
   const controlsRef = useRef<React.ComponentRef<typeof OrbitControls>>(null);
@@ -83,10 +113,12 @@ function CameraRig({ view, focus, spacing, zSpacing, layerCount, requestKey, ove
   }
 
   useEffect(() => {
-    const to = cameraPoseForView(view, focus, spacing, size.width, planeWidth, planeDepth, zSpacing, layerCount);
+    const cameraView = introPhase === 'hold' ? 'top' : view;
+    const cameraFocus = introPhase === 'hold' ? layerCount - 1 : focus;
+    const to = cameraPoseForView(cameraView, cameraFocus, spacing, size.width, planeWidth, planeDepth, zSpacing, layerCount);
     camera.far = 9000 * Math.max(1, planeWidth / 1080, (planeDepth + (layerCount - 1) * Math.abs(zSpacing)) / 580);
     camera.updateProjectionMatrix();
-    const request = `${view}:${focus}:${spacing}:${zSpacing}:${layerCount}:${requestKey}:${planeWidth}:${planeDepth}`;
+    const request = `${cameraView}:${cameraFocus}:${spacing}:${zSpacing}:${layerCount}:${requestKey}:${planeWidth}:${planeDepth}`;
     const previous = previousRef.current;
     previousRef.current = request;
     if (skipTransitionRef.current) {
@@ -100,22 +132,36 @@ function CameraRig({ view, focus, spacing, zSpacing, layerCount, requestKey, ove
     }
     const controls = controlsRef.current;
     if (controls) controls.enableDamping = false;
-    transitionRef.current = { from: readPose(), to, started: performance.now(), duration: view === 'top' ? 1100 : 900 };
-  }, [view, focus, spacing, zSpacing, layerCount, requestKey, size.width, planeWidth, planeDepth]);
+    transitionRef.current = { from: readPose(), to, started: performance.now(),
+      duration: introPhase === 'reveal' ? 1900 : cameraView === 'top' ? 1100 : 900 };
+  }, [view, focus, spacing, zSpacing, layerCount, requestKey, size.width, planeWidth, planeDepth, introPhase]);
+
+  useEffect(() => {
+    if (introPhase !== 'hold') return;
+    const timer = window.setTimeout(() => setIntroPhase('reveal'), 1000);
+    return () => window.clearTimeout(timer);
+  }, [introPhase, setIntroPhase]);
 
   useFrame(() => {
     const transition = transitionRef.current;
     if (!transition) return;
     const progress = Math.min(1, (performance.now() - transition.started) / transition.duration);
+    if (introPhase === 'reveal') introProgress.current = easeCubicInOut(progress);
     applyPose(interpolateCameraPose(transition.from, transition.to, progress));
     if (progress >= 1) {
       transitionRef.current = null;
       if (controlsRef.current) controlsRef.current.enableDamping = true;
+      if (introPhase === 'reveal') setIntroPhase('done');
     }
   });
 
   return <OrbitControls ref={controlsRef} minDistance={300} maxDistance={Math.max(4800, 9000 * Math.max(planeWidth / 1080, (planeDepth + (layerCount - 1) * Math.abs(zSpacing)) / 580))} minPolarAngle={0.0005} maxPolarAngle={1.55}
-    enableDamping onStart={() => { interactingRef.current = true; transitionRef.current = null; if (controlsRef.current) controlsRef.current.enableDamping = true; }}
+    enableDamping onStart={() => {
+      interactingRef.current = true;
+      transitionRef.current = null;
+      if (introPhase !== 'done') { skipTransitionRef.current = true; setIntroPhase('done'); }
+      if (controlsRef.current) controlsRef.current.enableDamping = true;
+    }}
     onEnd={() => { interactingRef.current = false; }}
     onChange={() => {
       if (interactingRef.current && overheadFocused && controlsRef.current && controlsRef.current.getPolarAngle() > 0.04) {
@@ -125,14 +171,18 @@ function CameraRig({ view, focus, spacing, zSpacing, layerCount, requestKey, ove
     }} />;
 }
 
-function SceneFader({ root, fades, count, focus }: {
+function SceneFader({ root, fades, count, focus, introPhase, introFocus, introProgress }: {
   root: React.RefObject<Group | null>; fades: React.RefObject<number[]>; count: number; focus: number | null;
+  introPhase: IntroPhase; introFocus: number; introProgress: React.RefObject<number>;
 }) {
   const baseOpacity = useRef(new WeakMap<Material, number>());
   useFrame((_, delta) => {
     const blend = 1 - Math.exp(-8 * delta);
     for (let i = 0; i < count; i++) {
-      const target = focus === null ? 1 : i === focus ? 1 : i < focus ? 0.1 : 0;
+      const reveal = Math.max(0, Math.min(1, (introProgress.current - 0.12) / 0.8));
+      const target = introPhase === 'hold' ? (i === introFocus ? 1 : 0)
+        : introPhase === 'reveal' ? (i === introFocus ? 1 : reveal)
+          : focus === null ? 1 : i === focus ? 1 : i < focus ? 0.1 : 0;
       fades.current[i] = (fades.current[i] ?? 1) + (target - (fades.current[i] ?? 1)) * blend;
     }
     for (const child of root.current?.children ?? []) {
@@ -206,13 +256,19 @@ function Shelf({ index, spacing, z, width, depth }: { index: number; spacing: nu
   </group>;
 }
 
-function Node({ node, index, spacing, z, selected, dimmed, onSelect }: {
-  node: PositionedGraphNode; index: number; spacing: number; z: number; selected: boolean; dimmed: boolean; onSelect: (id: string) => void;
+function Node({ node, kind, target, positions, selected, dimmed, onSelect }: {
+  node: PositionedGraphNode; kind: GraphNodeKind; target: Vector3; positions: MotionPositions;
+  selected: boolean; dimmed: boolean; onSelect: (id: string) => void;
 }) {
-  const kind = index === 0 ? 'resource' : index === 1 ? 'component' : index === 2 ? 'bff' : 'app';
-  const rise = kind === 'resource' ? 16 : kind === 'app' ? 8 : 13;
+  const group = useRef<Group>(null);
+  const rise = nodeRise(kind);
+  useFrame(() => {
+    const point = positions.current.get(node.id) ?? target;
+    group.current?.position.set(point.x, point.y + rise, point.z);
+  });
   const click = (event: ThreeEvent<MouseEvent>) => { event.stopPropagation(); onSelect(node.id); };
-  return <group position={[node.x, index * spacing + rise, node.z + z]} userData={{ selectionOpacity: dimmed ? 0.14 : 1 }}>
+  const initial = positions.current.get(node.id) ?? target;
+  return <group ref={group} position={[initial.x, initial.y + rise, initial.z]} userData={{ selectionOpacity: dimmed ? 0.14 : 1 }}>
     <mesh onClick={click}>
       {kind === 'resource' ? <cylinderGeometry args={[17, 17, 24, 40]} />
         : kind === 'bff' ? <cylinderGeometry args={[22, 22, 18, 6]} />
@@ -229,38 +285,67 @@ function Node({ node, index, spacing, z, selected, dimmed, onSelect }: {
   </group>;
 }
 
-function FlowDot({ from, to, phase }: {
-  from: [number, number, number]; to: [number, number, number]; phase: number;
+function AnimatedEdge({ source, target, sourceIndex, targetIndex, targets, positions, flow, phase, active }: {
+  source: string; target: string; sourceIndex: number; targetIndex: number;
+  targets: Map<string, Vector3>; positions: MotionPositions; flow: boolean; phase: number; active: boolean;
 }) {
+  const same = sourceIndex === targetIndex;
+  const glow = useRef<React.ComponentRef<typeof Line>>(null);
+  const line = useRef<React.ComponentRef<typeof Line>>(null);
+  const arrow = useRef<Mesh>(null);
   const dot = useRef<Mesh>(null);
+  const direction = useMemo(() => new Vector3(), []);
+  const up = useMemo(() => new Vector3(0, 1, 0), []);
+  const orientation = useMemo(() => new Quaternion(), []);
+  const lastValues = useRef<number[] | null>(null);
+  const endpoint = (id: string): Vector3 => positions.current.get(id) ?? targets.get(id)!;
+  const first = endpoint(source);
+  const second = endpoint(target);
+  const rise = same ? 7 : 20;
+  const points: [number, number, number][] = [
+    [first.x, first.y + rise, first.z], [second.x, second.y + rise, second.z],
+  ];
   useFrame(({ clock }) => {
-    const progress = (clock.getElapsedTime() * 0.3 + phase) % 1;
-    dot.current?.position.set(
-      from[0] + (to[0] - from[0]) * progress,
-      from[1] + (to[1] - from[1]) * progress,
-      from[2] + (to[2] - from[2]) * progress,
-    );
+    const a = endpoint(source);
+    const b = endpoint(target);
+    const values = [a.x, a.y + rise, a.z, b.x, b.y + rise, b.z];
+    if (!lastValues.current || values.some((value, index) => Math.abs(value - lastValues.current![index]) > 0.05)) {
+      if (glow.current) glow.current.geometry.setPositions(values);
+      if (line.current) {
+        line.current.geometry.setPositions(values);
+        if (!same) line.current.computeLineDistances();
+      }
+      lastValues.current = values;
+    }
+    direction.set(b.x - a.x, b.y - a.y, b.z - a.z);
+    if (arrow.current && direction.lengthSq() > 0.001) {
+      direction.normalize();
+      arrow.current.position.set(b.x - direction.x * 27, b.y + rise - direction.y * 27, b.z - direction.z * 27);
+      arrow.current.quaternion.copy(orientation.setFromUnitVectors(up, direction));
+    }
+    if (dot.current) {
+      const progress = (clock.getElapsedTime() * 0.3 + phase) % 1;
+      dot.current.position.set(a.x + (b.x - a.x) * progress, a.y + rise + (b.y - a.y) * progress, a.z + (b.z - a.z) * progress);
+    }
   });
-  return <mesh ref={dot}>
-    <sphereGeometry args={[4, 10, 8]} />
-    <meshBasicMaterial color="#eee9ff" transparent opacity={1} depthWrite={false} />
-  </mesh>;
+  return <group userData={{ fadeLayer: sourceIndex, fadeOtherLayer: targetIndex, selectionOpacity: active ? 1 : 0.07 }}>
+    {same && <Line ref={glow} points={points} color="#a99cf4" lineWidth={7} transparent opacity={0.14} />}
+    <Line ref={line} points={points} color={same ? '#d2cefd' : '#b5abfc'} lineWidth={same ? 1.8 : 1.1}
+      transparent opacity={same ? 0.85 : 0.45} dashed={!same} dashSize={8} gapSize={6} />
+    {same && <mesh ref={arrow}>
+      <coneGeometry args={[4.5, 12, 10]} />
+      <meshBasicMaterial color="#dcd4ff" transparent opacity={0.9} depthWrite={false} />
+    </mesh>}
+    {flow && <mesh ref={dot}>
+      <sphereGeometry args={[4, 10, 8]} />
+      <meshBasicMaterial color="#eee9ff" transparent opacity={1} depthWrite={false} />
+    </mesh>}
+  </group>;
 }
 
-function EdgeArrow({ from, to }: {
-  from: [number, number, number]; to: [number, number, number];
-}) {
-  const direction = new Vector3(to[0] - from[0], to[1] - from[1], to[2] - from[2]).normalize();
-  const position: [number, number, number] = [to[0] - direction.x * 27, to[1] - direction.y * 27, to[2] - direction.z * 27];
-  const orientation = new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), direction);
-  return <mesh position={position} quaternion={orientation}>
-    <coneGeometry args={[4.5, 12, 10]} />
-    <meshBasicMaterial color="#dcd4ff" transparent opacity={0.9} depthWrite={false} />
-  </mesh>;
-}
-
-function SceneLabels({ data, indices, spacing, zSpacing, visible, related, stage, nodeLabels, layerLabels, fades, focus, planeWidth, planeDepth }: {
+function SceneLabels({ data, indices, spacing, zSpacing, positions, visible, related, stage, nodeLabels, layerLabels, fades, focus, planeWidth, planeDepth }: {
   data: PositionedGraphData; indices: Map<string, number>; spacing: number; zSpacing: number; visible: Set<string>; related: Set<string> | null;
+  positions: MotionPositions;
   stage: React.RefObject<HTMLDivElement | null>;
   nodeLabels: React.RefObject<Map<string, HTMLDivElement>>;
   layerLabels: React.RefObject<Map<string, HTMLDivElement>>;
@@ -294,8 +379,10 @@ function SceneLabels({ data, indices, spacing, zSpacing, visible, related, stage
       const index = indices.get(node.layerId) ?? 0;
       const opacity = fades.current[index] ?? 1;
       const labelOpacity = focus !== null && index < focus ? Math.max(opacity, 0.42) : opacity;
-      const rise = index === 0 ? 49 : index === 2 ? 46 : index === 3 ? 31 : 36;
-      point.set(node.x, index * spacing + rise, node.z + layerZOffset(index, data.layers.length, zSpacing)).project(camera);
+      const rise = labelRise(node.kind ?? data.layers[index]?.kind ?? 'component');
+      const current = positions.current.get(node.id);
+      point.set(current?.x ?? node.x, (current?.y ?? index * spacing) + rise,
+        current?.z ?? node.z + layerZOffset(index, data.layers.length, zSpacing)).project(camera);
       label.style.visibility = opacity < 0.01 || point.z < -1 || point.z > 1 ? 'hidden' : 'visible';
       label.style.opacity = String(labelOpacity * (related && !related.has(node.id) ? 0.14 : 1));
       const x = (point.x + 1) / 2 * width;
@@ -313,9 +400,9 @@ type DomRefs = {
   paths: React.RefObject<Map<string, SVGPathElement>>;
 };
 
-function OwnerPaths({ data, indices, spacing, zSpacing, visible, selected, refs, fades }: {
+function OwnerPaths({ data, indices, spacing, zSpacing, positions, visible, selected, refs, fades }: {
   data: PositionedGraphData; indices: Map<string, number>; spacing: number; zSpacing: number; visible: Set<string>;
-  selected: string | null; refs: DomRefs; fades: React.RefObject<number[]>;
+  selected: string | null; refs: DomRefs; fades: React.RefObject<number[]>; positions: MotionPositions;
 }) {
   const vector = useMemo(() => new Vector3(), []);
   const nodes = useMemo(() => new Map(data.nodes.map((node) => [node.id, node])), [data.nodes]);
@@ -331,7 +418,9 @@ function OwnerPaths({ data, indices, spacing, zSpacing, visible, selected, refs,
       if (!path || !dot || !node) continue;
       if (!visible.has(node.layerId)) { path.setAttribute('d', ''); continue; }
       const layerIndex = indices.get(node.layerId) ?? 0;
-      vector.set(node.x, layerIndex * spacing + 18, node.z + layerZOffset(layerIndex, data.layers.length, zSpacing)).project(camera);
+      const current = positions.current.get(node.id);
+      vector.set(current?.x ?? node.x, (current?.y ?? layerIndex * spacing) + 18,
+        current?.z ?? node.z + layerZOffset(layerIndex, data.layers.length, zSpacing)).project(camera);
       if (vector.z < -1 || vector.z > 1) { path.setAttribute('d', ''); continue; }
       const x1 = (vector.x + 1) / 2 * stage.width + stage.left - board.left;
       const y1 = (1 - vector.y) / 2 * stage.height + stage.top - board.top;
@@ -348,19 +437,27 @@ function OwnerPaths({ data, indices, spacing, zSpacing, visible, selected, refs,
 }
 
 export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, visibleLayerIds, visibleEdgeTypes,
-  showOwners = true, layerSpacing = 240, layerZSpacing = 0, view = '3d', focusedLayerId = null, cameraRequestKey = 0, onViewChange, flow = true, bloom = true, className }: DependencyGraphProps) {
+  showOwners = true, layerSpacing = 240, layerZSpacing = 0, view = '3d', focusedLayerId = null,
+  cameraRequestKey = 0, onViewChange, flow = true, bloom = true, introAnimation = true, className }: DependencyGraphProps) {
   const board = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const sceneRoot = useRef<Group>(null);
-  const fades = useRef<number[]>([]);
+  const [introPhase, setIntroPhase] = useState<IntroPhase>(() => introAnimation && view === '3d' && data.layers.length > 0 ? 'hold' : 'done');
+  const introProgress = useRef(introPhase === 'done' ? 1 : 0);
+  const fades = useRef<number[]>(data.layers.map((_, index) => introPhase === 'hold' && index !== data.layers.length - 1 ? 0 : 1));
   const [orbitExited, setOrbitExited] = useState(false);
   useEffect(() => { setOrbitExited(false); }, [view, focusedLayerId, cameraRequestKey]);
+  useEffect(() => { if (view !== '3d' && introPhase !== 'done') setIntroPhase('done'); }, [view, introPhase]);
+  useEffect(() => { if (data.layers.length === 0 && introPhase !== 'done') setIntroPhase('done'); }, [data.layers.length, introPhase]);
   const owners = useRef(new Map<string, HTMLSpanElement>());
   const paths = useRef(new Map<string, SVGPathElement>());
   const nodeLabels = useRef(new Map<string, HTMLDivElement>());
   const layerLabels = useRef(new Map<string, HTMLDivElement>());
+  const previousLayout = useRef<GraphLayout | null>(null);
+  const positions = useRef(new Map<string, Vector3>());
   const errors = useMemo(() => validateGraph(data), [data]);
-  const layout = useMemo(() => layoutGraph(data), [data]);
+  const layout = useMemo(() => layoutGraph(data, previousLayout.current ?? undefined), [data]);
+  useEffect(() => { if (!errors.length) previousLayout.current = layout; }, [layout, errors]);
   const stackDepth = layout.depth + Math.max(0, data.layers.length - 1) * Math.abs(layerZSpacing);
   const sceneScale = Math.max(1, layout.width / 1080, stackDepth / 580);
   const ground = useMemo(() => groundGrid(layout.width, stackDepth), [layout.width, stackDepth]);
@@ -369,21 +466,40 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
   const edgeTypes = useMemo(() => new Set(visibleEdgeTypes ?? data.edges.map((edge) => edge.type ?? 'dependency')), [visibleEdgeTypes, data.edges]);
   const indices = useMemo(() => new Map(data.layers.map((layer, index) => [layer.id, index])), [data.layers]);
   const nodes = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
+  const edgeKeys = useMemo(() => {
+    const occurrences = new Map<string, number>();
+    return data.edges.map((edge) => {
+      const identity = edge.id ?? JSON.stringify([edge.source, edge.target, edge.type ?? 'dependency']);
+      const count = occurrences.get(identity) ?? 0;
+      occurrences.set(identity, count + 1);
+      return `${identity}:${count}`;
+    });
+  }, [data.edges]);
+  const targets = useMemo(() => new Map(graph.nodes.map((node) => {
+    const index = indices.get(node.layerId) ?? 0;
+    return [node.id, new Vector3(node.x, index * layerSpacing,
+      node.z + layerZOffset(index, data.layers.length, layerZSpacing))] as const;
+  })), [graph.nodes, indices, layerSpacing, layerZSpacing, data.layers.length]);
+  const selectionExists = !selectedNodeId || nodes.has(selectedNodeId) || !!data.owners?.some((owner) => owner.id === selectedNodeId);
+  const activeSelectionId = selectionExists ? selectedNodeId : null;
+  useEffect(() => { if (selectedNodeId && !selectionExists) onSelectNode?.(null); }, [selectedNodeId, selectionExists, onSelectNode]);
   const related = useMemo(() => {
-    if (!selectedNodeId) return null;
-    const set = getConnectedNodes(selectedNodeId, data.edges, edgeTypes);
+    if (!activeSelectionId) return null;
+    const set = getConnectedNodes(activeSelectionId, data.edges, edgeTypes);
     for (const link of data.ownership ?? []) {
-      if (link.ownerId === selectedNodeId) set.add(link.nodeId);
-      if (link.nodeId === selectedNodeId) set.add(link.ownerId);
+      if (link.ownerId === activeSelectionId) set.add(link.nodeId);
+      if (link.nodeId === activeSelectionId) set.add(link.ownerId);
     }
     return set;
-  }, [selectedNodeId, data.edges, data.ownership, edgeTypes]);
+  }, [activeSelectionId, data.edges, data.ownership, edgeTypes]);
   const focus = focusedLayerId ? indices.get(focusedLayerId) ?? -1 : view === 'top' ? Math.min(1, data.layers.length - 1) : -1;
   const focusedOverhead = view === 'top' && focus >= 0 && !orbitExited;
-  const fadeFocus = focusedOverhead ? focus : null;
+  const introFocus = data.layers.length - 1;
+  const introHolding = introPhase === 'hold' && introFocus >= 0;
+  const fadeFocus = introHolding ? introFocus : focusedOverhead ? focus : null;
   if (errors.length) return <div className="dgt-error" role="alert">Invalid graph: {errors.join('; ')}</div>;
-  const selectedNode = selectedNodeId ? nodes.get(selectedNodeId) : undefined;
-  const selectedOwner = data.owners?.find((owner) => owner.id === selectedNodeId);
+  const selectedNode = activeSelectionId ? nodes.get(activeSelectionId) : undefined;
+  const selectedOwner = data.owners?.find((owner) => owner.id === activeSelectionId);
   const showPanel = showOwners && !!data.owners?.length;
   const refs = { board, stage, owners, paths };
   return <div ref={board} className={`dgt-board${showPanel ? '' : ' no-owners'}${className ? ` ${className}` : ''}`}>
@@ -393,8 +509,10 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
         <color attach="background" args={[BG]} /><fog attach="fog" args={[BG, 1900 * sceneScale, 4200 * sceneScale]} />
         <ambientLight intensity={0.55} /><directionalLight position={[-400, 900, 600]} intensity={1.1} />
         <pointLight position={[0, 300, 300]} intensity={1.2} color="#968ae0" />
+        <GraphMotion targets={targets} positions={positions} />
         <CameraRig view={view} focus={focus} spacing={layerSpacing} zSpacing={layerZSpacing} layerCount={data.layers.length}
-          requestKey={cameraRequestKey} overheadFocused={focusedOverhead}
+          requestKey={cameraRequestKey} overheadFocused={focusedOverhead} introPhase={introPhase}
+          introProgress={introProgress} setIntroPhase={setIntroPhase}
           planeWidth={layout.width} planeDepth={layout.depth}
           onExitOverhead={() => { setOrbitExited(true); onViewChange?.('3d'); return !!onViewChange; }} />
         <lineSegments position={[0, -100, 0]}>
@@ -404,37 +522,29 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
         <group ref={sceneRoot}>
         {data.layers.map((layer, index) => visible.has(layer.id) && <group key={layer.id} userData={{ fadeLayer: index }}>
           <Shelf index={index} spacing={layerSpacing} z={layerZOffset(index, data.layers.length, layerZSpacing)} width={layout.width} depth={layout.depth} />
-          {graph.nodes.filter((node) => node.layerId === layer.id).map((node) => <Node key={node.id} node={node} index={index}
-            spacing={layerSpacing} z={layerZOffset(index, data.layers.length, layerZSpacing)}
-            selected={node.id === selectedNodeId} dimmed={!!related && !related.has(node.id)}
+          {graph.nodes.filter((node) => node.layerId === layer.id).map((node) => <Node key={node.id} node={node}
+            kind={node.kind ?? layer.kind ?? 'component'} target={targets.get(node.id)!} positions={positions}
+            selected={node.id === activeSelectionId} dimmed={!!related && !related.has(node.id)}
             onSelect={(id) => onSelectNode?.(id)} />)}
         </group>)}
         {data.edges.map((edge, index) => {
           const a = nodes.get(edge.source)!; const b = nodes.get(edge.target)!;
           if (!visible.has(a.layerId) || !visible.has(b.layerId) || !edgeTypes.has(edge.type ?? 'dependency')) return null;
           const ai = indices.get(a.layerId)!; const bi = indices.get(b.layerId)!;
-          const same = ai === bi;
-          const active = !selectedNodeId || edge.source === selectedNodeId || edge.target === selectedNodeId;
-          const points: [number, number, number][] = [
-            [a.x, ai * layerSpacing + (same ? 7 : 20), a.z + layerZOffset(ai, data.layers.length, layerZSpacing)],
-            [b.x, bi * layerSpacing + (same ? 7 : 20), b.z + layerZOffset(bi, data.layers.length, layerZSpacing)],
-          ];
-          return <group key={`${edge.source}-${edge.target}-${index}`}
-            userData={{ fadeLayer: ai, fadeOtherLayer: bi, selectionOpacity: active ? 1 : 0.07 }}>
-            {same && <Line points={points} color="#a99cf4" lineWidth={7} transparent opacity={0.14} />}
-            <Line points={points} color={same ? '#d2cefd' : '#b5abfc'} lineWidth={same ? 1.8 : 1.1}
-              transparent opacity={same ? 0.85 : 0.45} dashed={!same} dashSize={8} gapSize={6} />
-            {same && <EdgeArrow from={points[0]} to={points[1]} />}
-            {flow && <FlowDot from={points[0]} to={points[1]} phase={(index * 0.137) % 1} />}
-          </group>;
+          const active = !activeSelectionId || edge.source === activeSelectionId || edge.target === activeSelectionId;
+          return <AnimatedEdge key={edgeKeys[index]}
+            source={edge.source} target={edge.target} sourceIndex={ai} targetIndex={bi}
+            targets={targets} positions={positions} flow={flow} phase={(index * 0.137) % 1} active={active} />;
         })}
         </group>
-        <SceneFader root={sceneRoot} fades={fades} count={data.layers.length} focus={fadeFocus} />
-        <SceneLabels data={graph} indices={indices} spacing={layerSpacing} zSpacing={layerZSpacing} visible={visible} related={related}
-          stage={stage} nodeLabels={nodeLabels} layerLabels={layerLabels} fades={fades} focus={fadeFocus}
+        <SceneFader root={sceneRoot} fades={fades} count={data.layers.length} focus={fadeFocus}
+          introPhase={introPhase} introFocus={introFocus} introProgress={introProgress} />
+        <SceneLabels data={graph} indices={indices} spacing={layerSpacing} zSpacing={layerZSpacing} positions={positions}
+          visible={visible} related={related}
+          stage={stage} nodeLabels={nodeLabels} layerLabels={layerLabels} fades={fades} focus={focusedOverhead ? focus : null}
           planeWidth={layout.width} planeDepth={layout.depth} />
         {showPanel && <OwnerPaths data={graph} indices={indices} spacing={layerSpacing} zSpacing={layerZSpacing}
-          visible={visible} selected={selectedNodeId} refs={refs} fades={fades} />}
+          positions={positions} visible={visible} selected={activeSelectionId} refs={refs} fades={fades} />}
         <Bloom enabled={bloom} />
       </Canvas>
       <div className="dgt-world-labels" aria-hidden="true">
@@ -442,16 +552,18 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
           ref={(element) => { if (element) layerLabels.current.set(layer.id, element); else layerLabels.current.delete(layer.id); }}>
           <strong>{layer.key ?? layer.id.toUpperCase()} {layer.label}</strong><span>{layer.description}</span>
         </div>)}
-        {graph.nodes.map((node) => <div key={node.id} className={`dgt-node-label${node.id === selectedNodeId ? ' is-selected' : ''}`}
+        {graph.nodes.map((node) => <div key={node.id} className={`dgt-node-label${node.id === activeSelectionId ? ' is-selected' : ''}`}
           ref={(element) => { if (element) nodeLabels.current.set(node.id, element); else nodeLabels.current.delete(node.id); }}>
-          <span>{(indices.get(node.layerId) ?? 0) === 0 ? '◉' : (indices.get(node.layerId) ?? 0) === 1 ? '⬡' : (indices.get(node.layerId) ?? 0) === 2 ? '⬢' : '▣'}</span> {node.label}
+          <span>{{ resource: '◉', component: '⬡', bff: '⬢', app: '▣' }[node.kind ?? data.layers[indices.get(node.layerId) ?? 0]?.kind ?? 'component']}</span> {node.label}
         </div>)}
       </div>
-      <div className="dgt-heading"><h2>{focusedOverhead ? `${data.layers[focus].key ?? data.layers[focus].id} · ${data.layers[focus].label}` : 'System architecture'}</h2>
-        <p>{focusedOverhead ? `Top-down view of the ${data.layers[focus].label.toLowerCase()} shelf.` : 'One shelf per kind of entity. Owners stay flat in their own 2D group.'}</p></div>
+      <div className="dgt-heading"><h2>{introHolding ? `${data.layers[introFocus].key ?? data.layers[introFocus].id} · ${data.layers[introFocus].label}`
+        : focusedOverhead ? `${data.layers[focus].key ?? data.layers[focus].id} · ${data.layers[focus].label}` : 'System architecture'}</h2>
+        <p>{introHolding ? `Top-down view of the ${data.layers[introFocus].label.toLowerCase()} shelf.`
+          : focusedOverhead ? `Top-down view of the ${data.layers[focus].label.toLowerCase()} shelf.` : 'One shelf per kind of entity. Owners stay flat in their own 2D group.'}</p></div>
       {(selectedNode || selectedOwner) && <div className="dgt-selection"><button aria-label="Clear selection" onClick={() => onSelectNode?.(null)}>×</button>
         <strong>{selectedNode?.label ?? selectedOwner?.label}</strong><span>{selectedNode?.subtitle ?? selectedOwner?.lead}</span>
-        <small>{selectedNode ? selectedNode.layerId : `${data.ownership?.filter((link) => link.ownerId === selectedNodeId).length ?? 0} owned entities`}</small>
+        <small>{selectedNode ? selectedNode.layerId : `${data.ownership?.filter((link) => link.ownerId === activeSelectionId).length ?? 0} owned entities`}</small>
       </div>}
       <div className="dgt-legend"><span>◉ Resource</span><span>⬡ Component</span><span>⬢ BFF</span><span>▣ App</span><span>━ In-layer dependency</span><span>┄ Cross-layer</span></div>
     </div>
@@ -461,8 +573,8 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
         const count = data.ownership?.filter((link) => link.ownerId === owner.id).length ?? 0;
         const initials = owner.label.split(' ').map((part) => part[0]).join('').slice(0, 2);
         const dimmed = !!related && !related.has(owner.id);
-        return <button key={owner.id} className={`dgt-owner${owner.id === selectedNodeId ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}`}
-          onClick={() => onSelectNode?.(owner.id === selectedNodeId ? null : owner.id)}>
+        return <button key={owner.id} className={`dgt-owner${owner.id === activeSelectionId ? ' is-selected' : ''}${dimmed ? ' is-dimmed' : ''}`}
+          onClick={() => onSelectNode?.(owner.id === activeSelectionId ? null : owner.id)}>
           <span className="dgt-owner-dot" ref={(element) => { if (element) owners.current.set(owner.id, element); else owners.current.delete(owner.id); }}>{initials}</span>
           <span className="dgt-owner-copy"><strong>{owner.label}</strong><small>{owner.lead}</small></span><span className="dgt-owner-count">{count}</span>
         </button>;

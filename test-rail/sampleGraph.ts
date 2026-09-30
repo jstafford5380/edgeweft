@@ -38,10 +38,10 @@ const ownership = 'web-app>o-clients mobile-app>o-clients partner-portal>o-clien
 
 export const sampleGraph: GraphData = {
   layers: [
-    { id: 'resources', key: 'L0', label: 'Resources', description: 'Datastores, queues and external APIs' },
-    { id: 'components', key: 'L1', label: 'Components', description: 'Domain services and workers' },
-    { id: 'bffs', key: 'L2', label: 'BFFs', description: 'Backends shaped for each client' },
-    { id: 'apps', key: 'L3', label: 'Apps', description: 'User-facing clients' },
+    { id: 'resources', key: 'L0', label: 'Resources', description: 'Datastores, queues and external APIs', kind: 'resource' },
+    { id: 'components', key: 'L1', label: 'Components', description: 'Domain services and workers', kind: 'component' },
+    { id: 'bffs', key: 'L2', label: 'BFFs', description: 'Backends shaped for each client', kind: 'bff' },
+    { id: 'apps', key: 'L3', label: 'Apps', description: 'User-facing clients', kind: 'app' },
   ],
   nodes: nodes.map(([id, label, layer, x, z, subtitle]) => ({
     id, label, layerId: ['resources', 'components', 'bffs', 'apps'][layer], x: x * 1.5, z: z * 1.3, subtitle,

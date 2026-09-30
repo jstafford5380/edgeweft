@@ -1,6 +1,6 @@
 import type { GraphData, GraphEdge, GraphNode } from './types';
 
-export function getConnectedNodes(nodeId: string, edges: GraphEdge[], visibleEdgeTypes?: ReadonlySet<string>): Set<string> {
+export function getConnectedNodes(nodeId: string, edges: readonly GraphEdge[], visibleEdgeTypes?: ReadonlySet<string>): Set<string> {
   const connected = new Set([nodeId]);
   for (const edge of edges) {
     if (visibleEdgeTypes && !visibleEdgeTypes.has(edge.type ?? 'dependency')) continue;
@@ -30,7 +30,12 @@ export function validateGraph(data: GraphData): string[] {
     if (node.z !== undefined && !Number.isFinite(node.z)) errors.push(`Invalid z position for ${node.id}`);
     nodeIds.add(node.id);
   }
+  const edgeIds = new Set<string>();
   for (const edge of data.edges) {
+    if (edge.id) {
+      if (edgeIds.has(edge.id)) errors.push(`Duplicate edge id: ${edge.id}`);
+      edgeIds.add(edge.id);
+    }
     if (!nodeIds.has(edge.source)) errors.push(`Unknown edge source: ${edge.source}`);
     if (!nodeIds.has(edge.target)) errors.push(`Unknown edge target: ${edge.target}`);
   }

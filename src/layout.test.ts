@@ -63,4 +63,42 @@ describe('automatic graph layout', () => {
     expect(validateGraph({ layers, nodes: [{ id: 'a', label: 'A', layerId: 'upper', x: 2 }], edges: [] }))
       .toContain('Incomplete position for a: supply both x and z');
   });
+
+  it('preserves surviving automatic positions as snapshots add and remove nodes or edges', () => {
+    const initial: GraphData = {
+      layers: [layers[0]],
+      nodes: [{ id: 'a', label: 'A', layerId: 'lower' }, { id: 'b', label: 'B', layerId: 'lower' }],
+      edges: [],
+    };
+    const first = layoutGraph(initial);
+    const updated = layoutGraph({
+      ...initial,
+      nodes: [...initial.nodes, { id: 'c', label: 'C', layerId: 'lower' }],
+      edges: [{ source: 'c', target: 'a' }],
+    }, first);
+    const positions = (layout: typeof first) => new Map(layout.nodes.map((node) => [node.id, [node.x, node.z]]));
+    expect(positions(updated).get('a')).toEqual(positions(first).get('a'));
+    expect(positions(updated).get('b')).toEqual(positions(first).get('b'));
+    expect(positions(updated).get('c')).not.toEqual(positions(first).get('a'));
+    const removed = layoutGraph({ ...initial, nodes: [initial.nodes[1]], edges: [] }, updated);
+    expect(positions(removed).get('b')).toEqual(positions(first).get('b'));
+  });
+
+  it('moves an existing automatic node when an explicit position takes its slot', () => {
+    const initial: GraphData = { layers: [layers[0]], nodes: [{ id: 'a', label: 'A', layerId: 'lower' }], edges: [] };
+    const first = layoutGraph(initial);
+    const prior = first.nodes[0];
+    const next = layoutGraph({ ...initial, nodes: [...initial.nodes,
+      { id: 'pinned', label: 'Pinned', layerId: 'lower', x: prior.x, z: prior.z }] }, first);
+    expect(next.nodes.find((node) => node.id === 'pinned')).toMatchObject({ x: prior.x, z: prior.z });
+    expect(next.nodes.find((node) => node.id === 'a')).not.toMatchObject({ x: prior.x, z: prior.z });
+  });
+
+  it('releases a previously pinned node when coordinates are removed', () => {
+    const pinned: GraphData = { layers: [layers[0]], nodes: [{ id: 'a', label: 'A', layerId: 'lower', x: 480, z: 300 }], edges: [] };
+    const first = layoutGraph(pinned);
+    const automatic = layoutGraph({ ...pinned, nodes: [{ id: 'a', label: 'A', layerId: 'lower' }] }, first);
+    expect(automatic.nodes[0]).not.toMatchObject({ x: 480, z: 300 });
+    expect(automatic.automaticIds).toContain('a');
+  });
 });

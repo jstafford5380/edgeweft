@@ -1,45 +1,53 @@
+export type GraphNodeKind = 'resource' | 'component' | 'bff' | 'app';
+
 export interface GraphLayer {
-  id: string;
-  key?: string;
-  label: string;
-  description?: string;
-  color?: string;
+  readonly id: string;
+  readonly key?: string;
+  readonly label: string;
+  readonly description?: string;
+  readonly color?: string;
+  /** Default shape for nodes on this layer. */
+  readonly kind?: GraphNodeKind;
 }
 
 export interface GraphNode {
-  id: string;
-  label: string;
-  layerId: string;
+  readonly id: string;
+  readonly label: string;
+  readonly layerId: string;
   /** Optional horizontal position. Supply both x and z to pin a node. */
-  x?: number;
+  readonly x?: number;
   /** Optional depth position. Supply both x and z to pin a node. */
-  z?: number;
-  subtitle?: string;
+  readonly z?: number;
+  readonly subtitle?: string;
+  /** Overrides the layer shape for this node. Defaults to component. */
+  readonly kind?: GraphNodeKind;
 }
 
 export interface GraphEdge {
+  /** Optional stable identity for relationships that may be reordered or updated. */
+  readonly id?: string;
   /** The node where this directed relationship begins. */
-  source: string;
+  readonly source: string;
   /** The node it points to; animated flow travels toward this node. */
-  target: string;
-  type?: string;
+  readonly target: string;
+  readonly type?: string;
 }
 
 export interface GraphOwner {
-  id: string;
-  label: string;
-  lead?: string;
+  readonly id: string;
+  readonly label: string;
+  readonly lead?: string;
 }
 
 export interface GraphOwnership {
-  nodeId: string;
-  ownerId: string;
+  readonly nodeId: string;
+  readonly ownerId: string;
 }
 
 export interface GraphData {
-  layers: GraphLayer[];
-  nodes: GraphNode[];
-  edges: GraphEdge[];
-  owners?: GraphOwner[];
-  ownership?: GraphOwnership[];
+  readonly layers: readonly GraphLayer[];
+  readonly nodes: readonly GraphNode[];
+  readonly edges: readonly GraphEdge[];
+  readonly owners?: readonly GraphOwner[];
+  readonly ownership?: readonly GraphOwnership[];
 }

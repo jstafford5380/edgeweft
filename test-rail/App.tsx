@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { DependencyGraph, type GraphData, type GraphView } from '../src';
 import { sampleGraph } from './sampleGraph';
 import './style.css';
@@ -16,15 +16,32 @@ export function App() {
   const [showOwners, setShowOwners] = useState(true);
   const [flow, setFlow] = useState(true);
   const [autoLayout, setAutoLayout] = useState(false);
+  const [liveCount, setLiveCount] = useState(0);
+  const [liveUpdates, setLiveUpdates] = useState(false);
   const [layerSpacing, setLayerSpacing] = useState(240);
   const [layerZSpacing, setLayerZSpacing] = useState(0);
   const [view, setView] = useState<GraphView>('3d');
   const [focusedLayerId, setFocusedLayerId] = useState<string | null>('components');
   const [cameraRequestKey, setCameraRequestKey] = useState(0);
-  const graphData = useMemo<GraphData>(() => autoLayout ? {
-    ...sampleGraph,
-    nodes: sampleGraph.nodes.map(({ id, label, layerId, subtitle }) => ({ id, label, layerId, subtitle })),
-  } : sampleGraph, [autoLayout]);
+  const graphData = useMemo<GraphData>(() => {
+    const nodes = autoLayout
+      ? sampleGraph.nodes.map(({ id, label, layerId, subtitle }) => ({ id, label, layerId, subtitle }))
+      : sampleGraph.nodes;
+    return {
+      ...sampleGraph,
+      nodes: [...nodes, ...Array.from({ length: liveCount }, (_, index) => ({
+        id: `live-${index + 1}`, label: `live-service-${index + 1}`, layerId: 'components', subtitle: 'Live snapshot',
+      }))],
+      edges: [...sampleGraph.edges, ...Array.from({ length: liveCount }, (_, index) => ({
+        source: `live-${index + 1}`, target: 'orders', type: 'dependency',
+      }))],
+    };
+  }, [autoLayout, liveCount]);
+  useEffect(() => {
+    if (!liveUpdates) return;
+    const timer = window.setInterval(() => setLiveCount((count) => (count + 1) % 5), 1800);
+    return () => window.clearInterval(timer);
+  }, [liveUpdates]);
 
   function selectView(nextView: GraphView) {
     setView(nextView);
@@ -46,7 +63,7 @@ export function App() {
     <main className="rail-main">
       <aside className="rail-sidebar">
         <section><h2>Layers</h2>{[...sampleGraph.layers].reverse().map((layer) => {
-          const count = sampleGraph.nodes.filter((node) => node.layerId === layer.id).length;
+          const count = graphData.nodes.filter((node) => node.layerId === layer.id).length;
           const active = visibleLayerIds.includes(layer.id);
           return <div className={`rail-row${active ? '' : ' is-muted'}`} key={layer.id}>
             <button className="rail-row-main" onClick={() => { setFocusedLayerId(layer.id); selectView('top'); if (!active) toggleLayer(layer.id); }} title={`Top view of ${layer.label}`}>
@@ -67,6 +84,12 @@ export function App() {
         <section><h2>Placement</h2><button className={`rail-relation${autoLayout ? '' : ' is-muted'}`} onClick={() => setAutoLayout(!autoLayout)} aria-pressed={autoLayout}>
           <span className="rail-line solid" /><span>Auto layout</span><span className="rail-check">{autoLayout ? '☑' : '□'}</span>
         </button></section>
+        <section><h2>Live data <span>{liveCount} added</span></h2>
+          <button className="rail-relation" onClick={() => setLiveCount((count) => Math.min(4, count + 1))}>Add service</button>
+          <button className="rail-relation" onClick={() => setLiveCount((count) => Math.max(0, count - 1))}>Remove service</button>
+          <button className={`rail-relation${liveUpdates ? '' : ' is-muted'}`} onClick={() => setLiveUpdates(!liveUpdates)} aria-pressed={liveUpdates}>Auto updates {liveUpdates ? '☑' : '□'}</button>
+          {liveCount > 0 && <button className="rail-relation" onClick={() => setSelectedNodeId(`live-${liveCount}`)}>Select latest</button>}
+        </section>
         <div className="rail-help">Drag to orbit · Shift-drag to pan<br />Scroll to zoom<br />Choose a layer for its top view</div>
       </aside>
       <div className="rail-content"><DependencyGraph data={graphData} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}

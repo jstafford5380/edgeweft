@@ -9,6 +9,8 @@ export interface GraphLayout {
   nodes: PositionedGraphNode[];
   width: number;
   depth: number;
+  /** IDs that were placed automatically, for continuity across snapshots. */
+  automaticIds: string[];
 }
 
 export type PositionedGraphData = Omit<GraphData, 'nodes'> & { nodes: PositionedGraphNode[] };
@@ -56,16 +58,29 @@ function crosses(a: Point, b: Point, c: Point, d: Point): boolean {
   return abC * abD < 0 && cdA * cdB < 0;
 }
 
-/** Resolve missing node coordinates to repeatable, collision-safe positions on each shelf. */
-export function layoutGraph(data: GraphData): GraphLayout {
+/** Resolve missing coordinates. A previous layout preserves surviving node positions across snapshots. */
+export function layoutGraph(data: GraphData, previous?: GraphLayout): GraphLayout {
   const coordinates = new Map<string, Point>();
   const fixedIds = new Set(data.nodes.filter(hasPosition).map((node) => node.id));
+  const previousNodes = new Map(previous?.nodes.map((node) => [node.id, node]) ?? []);
+  const previousAutomaticIds = new Set(previous?.automaticIds ?? []);
   const movableByLayer = new Map<string, string[]>();
   const slotsByLayer = new Map<string, Point[]>();
   const layerByNode = new Map(data.nodes.map((node) => [node.id, node.layerId]));
 
   for (const node of data.nodes) {
     if (hasPosition(node)) coordinates.set(node.id, { x: node.x, z: node.z });
+  }
+
+  // Explicit positions win. Keep an automatic position only while its layer and clearance remain valid.
+  for (const node of [...data.nodes].sort((a, b) => a.id.localeCompare(b.id))) {
+    if (hasPosition(node)) continue;
+    const prior = previousNodes.get(node.id);
+    const blocked = data.nodes.some((other) => other.layerId === node.layerId && coordinates.has(other.id) &&
+      Math.abs((coordinates.get(other.id)?.x ?? 0) - (prior?.x ?? 0)) < NODE_CLEARANCE_X &&
+      Math.abs((coordinates.get(other.id)?.z ?? 0) - (prior?.z ?? 0)) < NODE_CLEARANCE_Z);
+    if (prior?.layerId === node.layerId && previousAutomaticIds.has(node.id) && !blocked)
+      coordinates.set(node.id, { x: prior.x, z: prior.z });
     else {
       const layer = movableByLayer.get(node.layerId) ?? [];
       layer.push(node.id);
@@ -77,7 +92,8 @@ export function layoutGraph(data: GraphData): GraphLayout {
     const ids = movableByLayer.get(layer.id);
     if (!ids?.length) continue;
     ids.sort();
-    const fixed = data.nodes.filter((node) => node.layerId === layer.id && hasPosition(node)) as PositionedGraphNode[];
+    const fixed = data.nodes.filter((node) => node.layerId === layer.id && coordinates.has(node.id))
+      .map((node) => ({ ...node, ...coordinates.get(node.id)! })) as PositionedGraphNode[];
     const slots = candidateSlots(ids.length, fixed);
     slotsByLayer.set(layer.id, slots);
     ids.forEach((id, index) => coordinates.set(id, slots[index]));
@@ -158,5 +174,5 @@ export function layoutGraph(data: GraphData): GraphLayout {
     width = Math.max(width, 2 * (Math.abs(node.x) + (automatic ? 110 : 40)));
     depth = Math.max(depth, 2 * (Math.abs(node.z) + (automatic ? 80 : 30)));
   }
-  return { nodes, width, depth };
+  return { nodes, width, depth, automaticIds: nodes.filter((node) => !fixedIds.has(node.id)).map((node) => node.id) };
 }
