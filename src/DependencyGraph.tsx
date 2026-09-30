@@ -46,6 +46,8 @@ export interface DependencyGraphProps {
   bloom?: boolean;
   /** Glow strength, clamped to `0`–`2`. Defaults to `0.65`; `0` disables glow. */
   glowIntensity?: number;
+  /** Shelf fill and relative border opacity from `0` (transparent) to `1` (opaque). Defaults to `0.32`. */
+  shelfOpacity?: number;
   /** Show the grid on shelves and the ground. Defaults to `true`. */
   showGrid?: boolean;
   /** Show node and shelf labels. Defaults to `true`. */
@@ -63,6 +65,7 @@ export interface DependencyGraphProps {
 }
 
 const BG = '#10111e';
+const DEFAULT_SHELF_OPACITY = 0.32;
 type MotionPositions = React.RefObject<Map<string, Vector3>>;
 
 const shapeIcons: Record<GraphNodeShape, string> = { cylinder: '◉', box: '▭', hexagon: '⬡', panel: '▣' };
@@ -225,16 +228,20 @@ function SceneFader({ root, fades, count, focus, introPhase, introFocus, introPr
         const objectMaterials = 'material' in object ? (object as { material: Material | Material[] }).material : undefined;
         if (!objectMaterials) return;
         let selectionOpacity = 1;
+        let opacityMultiplier = 1;
         let ancestor: Object3D | null = object;
         while (ancestor) {
           if (typeof ancestor.userData.selectionOpacity === 'number') selectionOpacity *= ancestor.userData.selectionOpacity;
+          if (typeof ancestor.userData.opacityMultiplier === 'number') opacityMultiplier *= ancestor.userData.opacityMultiplier;
           if (ancestor === child) break;
           ancestor = ancestor.parent;
         }
         for (const material of Array.isArray(objectMaterials) ? objectMaterials : [objectMaterials]) {
-          if (!baseOpacity.current.has(material)) baseOpacity.current.set(material, material.opacity);
+          const configuredOpacity = material.userData.baseOpacity;
+          if (typeof configuredOpacity === 'number') baseOpacity.current.set(material, configuredOpacity);
+          else if (!baseOpacity.current.has(material)) baseOpacity.current.set(material, material.opacity);
           material.transparent = true;
-          material.opacity = (baseOpacity.current.get(material) ?? 1) * opacity * selectionOpacity;
+          material.opacity = Math.min(1, (baseOpacity.current.get(material) ?? 1) * opacity * selectionOpacity * opacityMultiplier);
         }
       });
     }
@@ -261,8 +268,8 @@ function Bloom({ strength }: { strength: number }) {
   return null;
 }
 
-function Shelf({ index, spacing, z, width, depth, showGrid }: {
-  index: number; spacing: number; z: number; width: number; depth: number; showGrid: boolean;
+function Shelf({ index, spacing, z, width, depth, showGrid, opacity }: {
+  index: number; spacing: number; z: number; width: number; depth: number; showGrid: boolean; opacity: number;
 }) {
   const y = index * spacing;
   const grid = useMemo(() => shelfGrid(width, depth), [width, depth]);
@@ -273,18 +280,21 @@ function Shelf({ index, spacing, z, width, depth, showGrid }: {
   return <group>
     <mesh position={[0, y, z]}>
       <boxGeometry args={[width, 8, depth]} />
-      <meshStandardMaterial color="#262a60" emissive="#423a6a" emissiveIntensity={0.5} metalness={0.2} roughness={0.5} transparent opacity={0.32} side={DoubleSide} depthWrite={false} />
+      <meshStandardMaterial color="#262a60" emissive="#423a6a" emissiveIntensity={0.5} metalness={0.2} roughness={0.5}
+        transparent opacity={opacity} userData={{ baseOpacity: opacity }} side={DoubleSide} depthWrite={false} />
     </mesh>
     {showGrid && <lineSegments position={[0, y + 5, z]}>
       <bufferGeometry><bufferAttribute attach="attributes-position" args={[grid, 3]} /></bufferGeometry>
       <lineBasicMaterial color="#796cbf" transparent opacity={0.28} depthWrite={false} />
     </lineSegments>}
-    <Line points={outline} color="#9180e8" lineWidth={9} transparent opacity={0.13} />
-    <Line points={outline} color="#d2cefd" lineWidth={1.8} transparent opacity={0.95} />
-    <mesh position={[0, y + 5, z + depth / 2]}>
-      <boxGeometry args={[width, 1.8, 2]} />
-      <meshBasicMaterial color="#b5abfc" transparent opacity={0.8} />
-    </mesh>
+    <group userData={{ opacityMultiplier: opacity / DEFAULT_SHELF_OPACITY }}>
+      <Line points={outline} color="#9180e8" lineWidth={9} transparent opacity={0.13} />
+      <Line points={outline} color="#d2cefd" lineWidth={1.8} transparent opacity={0.95} />
+      <mesh position={[0, y + 5, z + depth / 2]}>
+        <boxGeometry args={[width, 1.8, 2]} />
+        <meshBasicMaterial color="#b5abfc" transparent opacity={0.8} />
+      </mesh>
+    </group>
   </group>;
 }
 
@@ -483,7 +493,7 @@ function OwnerPaths({ data, indices, spacing, zSpacing, positions, visible, sele
 /** Render an interactive layered dependency graph from a graph snapshot. */
 export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, visibleLayerIds, visibleEdgeTypes,
   showOwners = true, layerSpacing = 240, layerZSpacing = 0, view: controlledView, focusedLayerId = null,
-  cameraRequestKey = 0, onViewChange, flow = true, bloom = true, glowIntensity = 0.65,
+  cameraRequestKey = 0, onViewChange, flow = true, bloom = true, glowIntensity = 0.65, shelfOpacity = DEFAULT_SHELF_OPACITY,
   showGrid = true, showLabels = true, showLegend = true, title, description,
   introAnimation = true, className }: DependencyGraphProps) {
   const [uncontrolledView, setUncontrolledView] = useState<GraphView>('3d');
@@ -562,6 +572,7 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
   const headingTitle = title === undefined ? automaticTitle : title;
   const headingDescription = description === undefined ? automaticDescription : description;
   const glowStrength = bloom && Number.isFinite(glowIntensity) ? Math.max(0, Math.min(2, glowIntensity)) : 0;
+  const fillOpacity = Number.isFinite(shelfOpacity) ? Math.max(0, Math.min(1, shelfOpacity)) : DEFAULT_SHELF_OPACITY;
   const selectedNode = activeSelectionId ? nodes.get(activeSelectionId) : undefined;
   const selectedOwner = data.owners?.find((owner) => owner.id === activeSelectionId);
   const showPanel = showOwners && !!data.owners?.length;
@@ -591,7 +602,7 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
         <group ref={sceneRoot}>
         {data.layers.map((layer, index) => visible.has(layer.id) && <group key={layer.id} userData={{ fadeLayer: index }}>
           <Shelf index={index} spacing={layerSpacing} z={layerZOffset(index, data.layers.length, layerZSpacing)}
-            width={layout.width} depth={layout.depth} showGrid={showGrid} />
+            width={layout.width} depth={layout.depth} showGrid={showGrid} opacity={fillOpacity} />
           {graph.nodes.filter((node) => node.layerId === layer.id).map((node) => <Node key={node.id} node={node}
             shape={node.shape ?? 'box'} target={targets.get(node.id)!} positions={positions}
             selected={node.id === activeSelectionId} dimmed={!!related && !related.has(node.id)}

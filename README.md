@@ -45,6 +45,7 @@ Appearance and relationship visibility are controlled through component props:
 <DependencyGraph
   data={data}
   glowIntensity={0.45}
+  shelfOpacity={0.5}
   showGrid={false}
   visibleEdgeTypes={['dependency', 'call']}
   flow={false}
@@ -55,7 +56,7 @@ Appearance and relationship visibility are controlled through component props:
 />
 ```
 
-`glowIntensity` defaults to `0.65` and accepts values from `0` (off) to `2`; `bloom={false}` also disables it. `showGrid` controls both shelf and ground grid lines. `visibleEdgeTypes` accepts any edge type IDs, so the test rail's Dependencies, Calls, and Resource usage switches work without special cases in the package. `flow`, `showLabels`, and `showLegend` default to `true`. For `title` and `description`, `undefined` uses the automatic text for the current view, a string sets custom text, and `null` hides it. `showOwners` controls the optional 2D owners panel.
+`glowIntensity` defaults to `0.65` and accepts values from `0` (off) to `2`; `bloom={false}` also disables it. `shelfOpacity` controls the shelf fill from `0` (fully transparent) to `1` (opaque) and defaults to the original `0.32`. Shelf outlines and the front edge scale with it relative to that default. `showGrid` separately controls both shelf and ground grid lines. `visibleEdgeTypes` accepts any edge type IDs, so the test rail's Dependencies, Calls, and Resource usage switches work without special cases in the package. `flow`, `showLabels`, and `showLegend` default to `true`. For `title` and `description`, `undefined` uses the automatic text for the current view, a string sets custom text, and `null` hides it. `showOwners` controls the optional 2D owners panel.
 
 Node `x` and `z` coordinates are optional. Missing positions are laid out deterministically on collision-safe slots within each layer; the layout improves edge length and projected crossings, and shelves grow to fit dense layers. Supplying both coordinates pins a node in place. The exported `layoutGraph(data)` helper returns resolved node positions and shelf dimensions. The test rail's **Auto layout** switch applies this to the prototype graph.
 

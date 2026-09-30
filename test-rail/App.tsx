@@ -17,6 +17,7 @@ export function App() {
   const [showOwners, setShowOwners] = useState(true);
   const [flow, setFlow] = useState(true);
   const [glowIntensity, setGlowIntensity] = useState(0.65);
+  const [shelfOpacity, setShelfOpacity] = useState(0.32);
   const [showGrid, setShowGrid] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
   const [showLegend, setShowLegend] = useState(true);
@@ -91,6 +92,10 @@ export function App() {
             <input aria-label="Glow intensity" type="number" min="0" max="2" step="0.05" value={glowIntensity}
               onChange={(event) => setGlowIntensity(Math.max(0, Math.min(2, Number(event.target.value))))} />
           </label>
+          <label className="rail-config-field">Shelf opacity
+            <input aria-label="Shelf opacity" type="number" min="0" max="1" step="0.01" value={shelfOpacity}
+              onChange={(event) => setShelfOpacity(Math.max(0, Math.min(1, Number(event.target.value))))} />
+          </label>
           {([
             ['Grid', showGrid, setShowGrid],
             ['Node labels', showLabels, setShowLabels],
@@ -132,7 +137,7 @@ export function App() {
         visibleLayerIds={visibleLayerIds} visibleEdgeTypes={visibleEdgeTypes} showOwners={showOwners}
         layerSpacing={layerSpacing} layerZSpacing={layerZSpacing}
         view={view} focusedLayerId={focusedLayerId} cameraRequestKey={cameraRequestKey} onViewChange={setView} flow={flow}
-        glowIntensity={glowIntensity} showGrid={showGrid} showLabels={showLabels} showLegend={showLegend}
+        glowIntensity={glowIntensity} shelfOpacity={shelfOpacity} showGrid={showGrid} showLabels={showLabels} showLegend={showLegend}
         title={titleMode === 'automatic' ? undefined : titleMode === 'hidden' ? null : customTitle}
         description={descriptionMode === 'automatic' ? undefined : descriptionMode === 'hidden' ? null : customDescription} /></div>
     </main>
