@@ -1,4 +1,4 @@
-import type { GraphData, GraphEdge } from '../src';
+import type { GraphData, GraphEdge, GraphNodeShape } from '../src';
 
 // Data and positions from the v3 Claude prototype. Ownership is kept in 2D.
 const nodes: [string, string, number, number, number, string][] = [
@@ -35,16 +35,18 @@ const ownerList: [string, string, string][] = [
   ['o-platform', 'Platform', 'R. Okafor'], ['o-data', 'Data', 'J. Alvarez'],
 ];
 const ownership = 'web-app>o-clients mobile-app>o-clients partner-portal>o-clients web-bff>o-exp mobile-bff>o-exp admin-console>o-back admin-bff>o-back auth>o-identity users>o-identity sessions>o-identity usersdb>o-identity orders>o-commerce pay>o-commerce inv>o-commerce ordersdb>o-commerce stripe>o-commerce invdb>o-commerce search>o-discovery catalog>o-discovery es>o-discovery notif>o-platform kafka>o-platform cdn>o-platform analytics>o-data warehouse>o-data';
+const shapes: GraphNodeShape[] = ['cylinder', 'box', 'hexagon', 'panel'];
 
 export const sampleGraph: GraphData = {
   layers: [
-    { id: 'resources', key: 'L0', label: 'Resources', description: 'Datastores, queues and external APIs', kind: 'resource' },
-    { id: 'components', key: 'L1', label: 'Components', description: 'Domain services and workers', kind: 'component' },
-    { id: 'bffs', key: 'L2', label: 'BFFs', description: 'Backends shaped for each client', kind: 'bff' },
-    { id: 'apps', key: 'L3', label: 'Apps', description: 'User-facing clients', kind: 'app' },
+    { id: 'resources', key: 'L0', label: 'Resources', description: 'Datastores, queues and external APIs' },
+    { id: 'components', key: 'L1', label: 'Components', description: 'Domain services and workers' },
+    { id: 'bffs', key: 'L2', label: 'BFFs', description: 'Backends shaped for each client' },
+    { id: 'apps', key: 'L3', label: 'Apps', description: 'User-facing clients' },
   ],
   nodes: nodes.map(([id, label, layer, x, z, subtitle]) => ({
-    id, label, layerId: ['resources', 'components', 'bffs', 'apps'][layer], x: x * 1.5, z: z * 1.3, subtitle,
+    id, label, layerId: ['resources', 'components', 'bffs', 'apps'][layer], shape: shapes[layer],
+    x: x * 1.5, z: z * 1.3, subtitle,
   })),
   edges,
   owners: ownerList.map(([id, label, lead]) => ({ id, label, lead })),

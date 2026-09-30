@@ -9,40 +9,70 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { cameraPoseForView, easeCubicInOut, interpolateCameraPose, layerZOffset, type CameraPose, type GraphView } from './camera';
 import { getConnectedNodes, validateGraph } from './graph';
 import { layoutGraph, type GraphLayout, type PositionedGraphData, type PositionedGraphNode } from './layout';
-import type { GraphData, GraphNodeKind } from './types';
+import type { GraphData, GraphNodeShape } from './types';
 import './style.css';
 
 export type { GraphView } from './camera';
 
+/** Configuration for the layered 3D graph. Pass a new `data` object for each live snapshot. */
 export interface DependencyGraphProps {
+  /** Graph snapshot to display. Keep entity IDs stable between updates to preserve placement. */
   data: GraphData;
+  /** Selected node or owner ID; `null` clears the selection. */
   selectedNodeId?: string | null;
+  /** Called when a node or owner is selected, the background is clicked, or a selection disappears. */
   onSelectNode?: (nodeId: string | null) => void;
+  /** Layer IDs to display. Omit to show all layers; pass an empty array to hide all. */
   visibleLayerIds?: string[];
+  /** Edge categories to display. Omit to show all; edges without a type use `dependency`. */
   visibleEdgeTypes?: string[];
+  /** Show the flat owners panel and its links. Defaults to `true` when owners are supplied. */
   showOwners?: boolean;
+  /** Vertical distance between shelves, in scene units. Defaults to `240`. */
   layerSpacing?: number;
+  /** Depth spread between shelves, centered on the stack. Defaults to `0`; negative values reverse the spread. */
   layerZSpacing?: number;
+  /** Controlled camera preset. Omit to let the built-in view toolbar manage it; starts at `3d`. */
   view?: GraphView;
+  /** Shelf to focus in the top view. `null` uses the default shelf for that view. */
   focusedLayerId?: string | null;
+  /** Change this value to replay the camera move to the current view or focused layer. */
   cameraRequestKey?: number;
+  /** Called when the toolbar selects a view or the user rotates away from a focused top view. */
   onViewChange?: (view: GraphView) => void;
+  /** Animate particles along directed edges. Defaults to `true`. */
   flow?: boolean;
+  /** Enable the glow pass. Defaults to `true`; `glowIntensity` sets its strength. */
   bloom?: boolean;
-  /** Play the opening top-shelf-to-3D camera move on mount. Defaults to true for the 3D view. */
+  /** Glow strength, clamped to `0`–`2`. Defaults to `0.65`; `0` disables glow. */
+  glowIntensity?: number;
+  /** Show the grid on shelves and the ground. Defaults to `true`. */
+  showGrid?: boolean;
+  /** Show node and shelf labels. Defaults to `true`. */
+  showLabels?: boolean;
+  /** Show the shape and edge legend. Defaults to `true`. */
+  showLegend?: boolean;
+  /** Heading title. `undefined` uses the view's automatic title; `null` hides it. */
+  title?: string | null;
+  /** Heading description. `undefined` uses automatic text; `null` hides it. */
+  description?: string | null;
+  /** Play the opening top-shelf-to-3D camera move on mount. Defaults to `true` in the 3D view. */
   introAnimation?: boolean;
+  /** Additional CSS class applied to the graph's root element. */
   className?: string;
 }
 
 const BG = '#10111e';
 type MotionPositions = React.RefObject<Map<string, Vector3>>;
 
-function nodeRise(kind: GraphNodeKind): number {
-  return kind === 'resource' ? 16 : kind === 'app' ? 8 : 13;
+const shapeIcons: Record<GraphNodeShape, string> = { cylinder: '◉', box: '▭', hexagon: '⬡', panel: '▣' };
+
+function nodeRise(shape: GraphNodeShape): number {
+  return shape === 'cylinder' ? 16 : shape === 'panel' ? 8 : 13;
 }
 
-function labelRise(kind: GraphNodeKind): number {
-  return kind === 'resource' ? 49 : kind === 'bff' ? 46 : kind === 'app' ? 31 : 36;
+function labelRise(shape: GraphNodeShape): number {
+  return shape === 'cylinder' ? 49 : shape === 'hexagon' ? 46 : shape === 'panel' ? 31 : 36;
 }
 
 function GraphMotion({ targets, positions }: { targets: Map<string, Vector3>; positions: MotionPositions }) {
@@ -76,7 +106,7 @@ type IntroPhase = 'hold' | 'reveal' | 'done';
 function CameraRig({ view, focus, spacing, zSpacing, layerCount, requestKey, overheadFocused, onExitOverhead,
   introPhase, introProgress, setIntroPhase, planeWidth, planeDepth }: {
   view: GraphView; focus: number; spacing: number; zSpacing: number; layerCount: number;
-  requestKey: number; overheadFocused: boolean; onExitOverhead: () => boolean;
+  requestKey: string; overheadFocused: boolean; onExitOverhead: () => boolean;
   introPhase: IntroPhase; introProgress: React.RefObject<number>;
   setIntroPhase: React.Dispatch<React.SetStateAction<IntroPhase>>;
   planeWidth: number; planeDepth: number;
@@ -212,7 +242,7 @@ function SceneFader({ root, fades, count, focus, introPhase, introFocus, introPr
   return null;
 }
 
-function Bloom({ enabled }: { enabled: boolean }) {
+function Bloom({ strength }: { strength: number }) {
   const { gl, scene, camera, size } = useThree();
   const composer = useMemo(() => {
     const engine = new EffectComposer(gl);
@@ -224,14 +254,16 @@ function Bloom({ enabled }: { enabled: boolean }) {
   }, [gl, scene, camera]);
   useEffect(() => {
     composer.engine.setSize(size.width, size.height);
-    composer.glow.strength = enabled ? 0.65 : 0;
-  }, [composer, size.width, size.height, enabled]);
+    composer.glow.strength = strength;
+  }, [composer, size.width, size.height, strength]);
   useEffect(() => () => composer.engine.dispose(), [composer]);
   useFrame(() => composer.engine.render(), 1);
   return null;
 }
 
-function Shelf({ index, spacing, z, width, depth }: { index: number; spacing: number; z: number; width: number; depth: number }) {
+function Shelf({ index, spacing, z, width, depth, showGrid }: {
+  index: number; spacing: number; z: number; width: number; depth: number; showGrid: boolean;
+}) {
   const y = index * spacing;
   const grid = useMemo(() => shelfGrid(width, depth), [width, depth]);
   const outline: [number, number, number][] = [
@@ -243,10 +275,10 @@ function Shelf({ index, spacing, z, width, depth }: { index: number; spacing: nu
       <boxGeometry args={[width, 8, depth]} />
       <meshStandardMaterial color="#262a60" emissive="#423a6a" emissiveIntensity={0.5} metalness={0.2} roughness={0.5} transparent opacity={0.32} side={DoubleSide} depthWrite={false} />
     </mesh>
-    <lineSegments position={[0, y + 5, z]}>
+    {showGrid && <lineSegments position={[0, y + 5, z]}>
       <bufferGeometry><bufferAttribute attach="attributes-position" args={[grid, 3]} /></bufferGeometry>
       <lineBasicMaterial color="#796cbf" transparent opacity={0.28} depthWrite={false} />
-    </lineSegments>
+    </lineSegments>}
     <Line points={outline} color="#9180e8" lineWidth={9} transparent opacity={0.13} />
     <Line points={outline} color="#d2cefd" lineWidth={1.8} transparent opacity={0.95} />
     <mesh position={[0, y + 5, z + depth / 2]}>
@@ -256,12 +288,12 @@ function Shelf({ index, spacing, z, width, depth }: { index: number; spacing: nu
   </group>;
 }
 
-function Node({ node, kind, target, positions, selected, dimmed, onSelect }: {
-  node: PositionedGraphNode; kind: GraphNodeKind; target: Vector3; positions: MotionPositions;
+function Node({ node, shape, target, positions, selected, dimmed, onSelect }: {
+  node: PositionedGraphNode; shape: GraphNodeShape; target: Vector3; positions: MotionPositions;
   selected: boolean; dimmed: boolean; onSelect: (id: string) => void;
 }) {
   const group = useRef<Group>(null);
-  const rise = nodeRise(kind);
+  const rise = nodeRise(shape);
   useFrame(() => {
     const point = positions.current.get(node.id) ?? target;
     group.current?.position.set(point.x, point.y + rise, point.z);
@@ -270,16 +302,16 @@ function Node({ node, kind, target, positions, selected, dimmed, onSelect }: {
   const initial = positions.current.get(node.id) ?? target;
   return <group ref={group} position={[initial.x, initial.y + rise, initial.z]} userData={{ selectionOpacity: dimmed ? 0.14 : 1 }}>
     <mesh onClick={click}>
-      {kind === 'resource' ? <cylinderGeometry args={[17, 17, 24, 40]} />
-        : kind === 'bff' ? <cylinderGeometry args={[22, 22, 18, 6]} />
-          : kind === 'app' ? <boxGeometry args={[84, 7, 54]} />
+      {shape === 'cylinder' ? <cylinderGeometry args={[17, 17, 24, 40]} />
+        : shape === 'hexagon' ? <cylinderGeometry args={[22, 22, 18, 6]} />
+          : shape === 'panel' ? <boxGeometry args={[84, 7, 54]} />
             : <boxGeometry args={[92, 18, 30]} />}
-      <meshStandardMaterial color={selected ? '#eee0ae' : kind === 'resource' ? '#595d6c' : '#796cbf'}
+      <meshStandardMaterial color={selected ? '#eee0ae' : shape === 'cylinder' ? '#595d6c' : '#796cbf'}
         emissive={selected ? '#d7ba5b' : '#968ae0'} emissiveIntensity={selected ? 0.8 : 0.55}
         metalness={0.3} roughness={0.34} transparent opacity={0.96} />
       <Edges threshold={20} color={selected ? '#fff1ba' : '#d2cefd'} />
     </mesh>
-    {kind === 'app' && <mesh position={[0, 4, 0]}>
+    {shape === 'panel' && <mesh position={[0, 4, 0]}>
       <boxGeometry args={[72, 1, 40]} /><meshBasicMaterial color="#423a6a" transparent opacity={0.9} />
     </mesh>}
   </group>;
@@ -354,23 +386,33 @@ function SceneLabels({ data, indices, spacing, zSpacing, positions, visible, rel
   planeWidth: number; planeDepth: number;
 }) {
   const point = useMemo(() => new Vector3(), []);
+  const cameraPoint = useMemo(() => new Vector3(), []);
   const tick = useRef(0);
   useFrame(({ camera }) => {
     if (++tick.current % 2 || !stage.current) return;
     const width = stage.current.clientWidth;
     const height = stage.current.clientHeight;
+    // Match the label's screen size to a world-space object at the same depth.
+    // The floor keeps text legible when the camera frames a very large graph.
+    const labelScale = (worldPoint: Vector3) => {
+      const depth = -cameraPoint.copy(worldPoint).applyMatrix4(camera.matrixWorldInverse).z;
+      const pixelsPerUnit = height * camera.projectionMatrix.elements[5] / (2 * Math.max(1, depth));
+      return Math.max(0.55, Math.min(2, pixelsPerUnit / 0.75));
+    };
     for (const layer of data.layers) {
       const label = layerLabels.current.get(layer.id);
       if (!label) continue;
       if (!visible.has(layer.id)) { label.style.visibility = 'hidden'; continue; }
       const index = indices.get(layer.id) ?? 0;
       const opacity = fades.current[index] ?? 1;
-      point.set(-planeWidth / 2, index * spacing + 5, planeDepth * 0.15 + layerZOffset(index, data.layers.length, zSpacing)).project(camera);
+      point.set(-planeWidth / 2, index * spacing + 5, planeDepth * 0.15 + layerZOffset(index, data.layers.length, zSpacing));
+      const scale = labelScale(point);
+      point.project(camera);
       label.style.visibility = opacity < 0.01 || point.z < -1 || point.z > 1 ? 'hidden' : 'visible';
       label.style.opacity = String(opacity);
       const x = (point.x + 1) / 2 * width;
       const y = (1 - point.y) / 2 * height;
-      label.style.transform = `translate3d(${Math.max(8, x - label.offsetWidth - 18).toFixed(1)}px,${(y - label.offsetHeight / 2).toFixed(1)}px,0)`;
+      label.style.transform = `translate3d(${Math.max(8, x - (label.offsetWidth + 18) * scale).toFixed(1)}px,${(y - label.offsetHeight * scale / 2).toFixed(1)}px,0) scale(${scale.toFixed(3)})`;
     }
     for (const node of data.nodes) {
       const label = nodeLabels.current.get(node.id);
@@ -379,15 +421,17 @@ function SceneLabels({ data, indices, spacing, zSpacing, positions, visible, rel
       const index = indices.get(node.layerId) ?? 0;
       const opacity = fades.current[index] ?? 1;
       const labelOpacity = focus !== null && index < focus ? Math.max(opacity, 0.42) : opacity;
-      const rise = labelRise(node.kind ?? data.layers[index]?.kind ?? 'component');
+      const rise = labelRise(node.shape ?? 'box');
       const current = positions.current.get(node.id);
       point.set(current?.x ?? node.x, (current?.y ?? index * spacing) + rise,
-        current?.z ?? node.z + layerZOffset(index, data.layers.length, zSpacing)).project(camera);
+        current?.z ?? node.z + layerZOffset(index, data.layers.length, zSpacing));
+      const scale = labelScale(point);
+      point.project(camera);
       label.style.visibility = opacity < 0.01 || point.z < -1 || point.z > 1 ? 'hidden' : 'visible';
       label.style.opacity = String(labelOpacity * (related && !related.has(node.id) ? 0.14 : 1));
       const x = (point.x + 1) / 2 * width;
       const y = (1 - point.y) / 2 * height;
-      label.style.transform = `translate3d(${(x - label.offsetWidth / 2).toFixed(1)}px,${(y - label.offsetHeight / 2).toFixed(1)}px,0)`;
+      label.style.transform = `translate3d(${(x - label.offsetWidth * scale / 2).toFixed(1)}px,${(y - label.offsetHeight * scale / 2).toFixed(1)}px,0) scale(${scale.toFixed(3)})`;
     }
   });
   return null;
@@ -436,9 +480,21 @@ function OwnerPaths({ data, indices, spacing, zSpacing, positions, visible, sele
   return null;
 }
 
+/** Render an interactive layered dependency graph from a graph snapshot. */
 export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, visibleLayerIds, visibleEdgeTypes,
-  showOwners = true, layerSpacing = 240, layerZSpacing = 0, view = '3d', focusedLayerId = null,
-  cameraRequestKey = 0, onViewChange, flow = true, bloom = true, introAnimation = true, className }: DependencyGraphProps) {
+  showOwners = true, layerSpacing = 240, layerZSpacing = 0, view: controlledView, focusedLayerId = null,
+  cameraRequestKey = 0, onViewChange, flow = true, bloom = true, glowIntensity = 0.65,
+  showGrid = true, showLabels = true, showLegend = true, title, description,
+  introAnimation = true, className }: DependencyGraphProps) {
+  const [uncontrolledView, setUncontrolledView] = useState<GraphView>('3d');
+  const [toolbarRequestKey, setToolbarRequestKey] = useState(0);
+  const view = controlledView ?? uncontrolledView;
+  const requestKey = `${cameraRequestKey}:${toolbarRequestKey}`;
+  function selectView(nextView: GraphView) {
+    if (controlledView === undefined) setUncontrolledView(nextView);
+    setToolbarRequestKey((key) => key + 1);
+    onViewChange?.(nextView);
+  }
   const board = useRef<HTMLDivElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const sceneRoot = useRef<Group>(null);
@@ -446,7 +502,7 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
   const introProgress = useRef(introPhase === 'done' ? 1 : 0);
   const fades = useRef<number[]>(data.layers.map((_, index) => introPhase === 'hold' && index !== data.layers.length - 1 ? 0 : 1));
   const [orbitExited, setOrbitExited] = useState(false);
-  useEffect(() => { setOrbitExited(false); }, [view, focusedLayerId, cameraRequestKey]);
+  useEffect(() => { setOrbitExited(false); }, [view, focusedLayerId, requestKey]);
   useEffect(() => { if (view !== '3d' && introPhase !== 'done') setIntroPhase('done'); }, [view, introPhase]);
   useEffect(() => { if (data.layers.length === 0 && introPhase !== 'done') setIntroPhase('done'); }, [data.layers.length, introPhase]);
   const owners = useRef(new Map<string, HTMLSpanElement>());
@@ -498,6 +554,14 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
   const introHolding = introPhase === 'hold' && introFocus >= 0;
   const fadeFocus = introHolding ? introFocus : focusedOverhead ? focus : null;
   if (errors.length) return <div className="dgt-error" role="alert">Invalid graph: {errors.join('; ')}</div>;
+  const automaticTitle = introHolding ? `${data.layers[introFocus].key ?? data.layers[introFocus].id} · ${data.layers[introFocus].label}`
+    : focusedOverhead ? `${data.layers[focus].key ?? data.layers[focus].id} · ${data.layers[focus].label}` : 'System architecture';
+  const automaticDescription = introHolding ? `Top-down view of the ${data.layers[introFocus].label.toLowerCase()} shelf.`
+    : focusedOverhead ? `Top-down view of the ${data.layers[focus].label.toLowerCase()} shelf.`
+      : 'One shelf per kind of entity. Owners stay flat in their own 2D group.';
+  const headingTitle = title === undefined ? automaticTitle : title;
+  const headingDescription = description === undefined ? automaticDescription : description;
+  const glowStrength = bloom && Number.isFinite(glowIntensity) ? Math.max(0, Math.min(2, glowIntensity)) : 0;
   const selectedNode = activeSelectionId ? nodes.get(activeSelectionId) : undefined;
   const selectedOwner = data.owners?.find((owner) => owner.id === activeSelectionId);
   const showPanel = showOwners && !!data.owners?.length;
@@ -511,19 +575,25 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
         <pointLight position={[0, 300, 300]} intensity={1.2} color="#968ae0" />
         <GraphMotion targets={targets} positions={positions} />
         <CameraRig view={view} focus={focus} spacing={layerSpacing} zSpacing={layerZSpacing} layerCount={data.layers.length}
-          requestKey={cameraRequestKey} overheadFocused={focusedOverhead} introPhase={introPhase}
+          requestKey={requestKey} overheadFocused={focusedOverhead} introPhase={introPhase}
           introProgress={introProgress} setIntroPhase={setIntroPhase}
           planeWidth={layout.width} planeDepth={layout.depth}
-          onExitOverhead={() => { setOrbitExited(true); onViewChange?.('3d'); return !!onViewChange; }} />
-        <lineSegments position={[0, -100, 0]}>
+          onExitOverhead={() => {
+            setOrbitExited(true);
+            if (controlledView === undefined) setUncontrolledView('3d');
+            onViewChange?.('3d');
+            return true;
+          }} />
+        {showGrid && <lineSegments position={[0, -100, 0]}>
           <bufferGeometry><bufferAttribute attach="attributes-position" args={[ground, 3]} /></bufferGeometry>
           <lineBasicMaterial color="#3e376d" transparent opacity={0.2} depthWrite={false} />
-        </lineSegments>
+        </lineSegments>}
         <group ref={sceneRoot}>
         {data.layers.map((layer, index) => visible.has(layer.id) && <group key={layer.id} userData={{ fadeLayer: index }}>
-          <Shelf index={index} spacing={layerSpacing} z={layerZOffset(index, data.layers.length, layerZSpacing)} width={layout.width} depth={layout.depth} />
+          <Shelf index={index} spacing={layerSpacing} z={layerZOffset(index, data.layers.length, layerZSpacing)}
+            width={layout.width} depth={layout.depth} showGrid={showGrid} />
           {graph.nodes.filter((node) => node.layerId === layer.id).map((node) => <Node key={node.id} node={node}
-            kind={node.kind ?? layer.kind ?? 'component'} target={targets.get(node.id)!} positions={positions}
+            shape={node.shape ?? 'box'} target={targets.get(node.id)!} positions={positions}
             selected={node.id === activeSelectionId} dimmed={!!related && !related.has(node.id)}
             onSelect={(id) => onSelectNode?.(id)} />)}
         </group>)}
@@ -539,33 +609,39 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
         </group>
         <SceneFader root={sceneRoot} fades={fades} count={data.layers.length} focus={fadeFocus}
           introPhase={introPhase} introFocus={introFocus} introProgress={introProgress} />
-        <SceneLabels data={graph} indices={indices} spacing={layerSpacing} zSpacing={layerZSpacing} positions={positions}
+        {showLabels && <SceneLabels data={graph} indices={indices} spacing={layerSpacing} zSpacing={layerZSpacing} positions={positions}
           visible={visible} related={related}
           stage={stage} nodeLabels={nodeLabels} layerLabels={layerLabels} fades={fades} focus={focusedOverhead ? focus : null}
-          planeWidth={layout.width} planeDepth={layout.depth} />
+          planeWidth={layout.width} planeDepth={layout.depth} />}
         {showPanel && <OwnerPaths data={graph} indices={indices} spacing={layerSpacing} zSpacing={layerZSpacing}
           positions={positions} visible={visible} selected={activeSelectionId} refs={refs} fades={fades} />}
-        <Bloom enabled={bloom} />
+        <Bloom strength={glowStrength} />
       </Canvas>
-      <div className="dgt-world-labels" aria-hidden="true">
+      {showLabels && <div className="dgt-world-labels" aria-hidden="true">
         {data.layers.map((layer) => <div key={layer.id} className="dgt-shelf-label"
           ref={(element) => { if (element) layerLabels.current.set(layer.id, element); else layerLabels.current.delete(layer.id); }}>
           <strong>{layer.key ?? layer.id.toUpperCase()} {layer.label}</strong><span>{layer.description}</span>
         </div>)}
         {graph.nodes.map((node) => <div key={node.id} className={`dgt-node-label${node.id === activeSelectionId ? ' is-selected' : ''}`}
           ref={(element) => { if (element) nodeLabels.current.set(node.id, element); else nodeLabels.current.delete(node.id); }}>
-          <span>{{ resource: '◉', component: '⬡', bff: '⬢', app: '▣' }[node.kind ?? data.layers[indices.get(node.layerId) ?? 0]?.kind ?? 'component']}</span> {node.label}
+          <span>{shapeIcons[node.shape ?? 'box']}</span> {node.label}
         </div>)}
-      </div>
-      <div className="dgt-heading"><h2>{introHolding ? `${data.layers[introFocus].key ?? data.layers[introFocus].id} · ${data.layers[introFocus].label}`
-        : focusedOverhead ? `${data.layers[focus].key ?? data.layers[focus].id} · ${data.layers[focus].label}` : 'System architecture'}</h2>
-        <p>{introHolding ? `Top-down view of the ${data.layers[introFocus].label.toLowerCase()} shelf.`
-          : focusedOverhead ? `Top-down view of the ${data.layers[focus].label.toLowerCase()} shelf.` : 'One shelf per kind of entity. Owners stay flat in their own 2D group.'}</p></div>
+      </div>}
+      {(headingTitle !== null || headingDescription !== null) && <div className="dgt-heading">
+        {headingTitle !== null && <h2>{headingTitle}</h2>}
+        {headingDescription !== null && <p>{headingDescription}</p>}
+      </div>}
       {(selectedNode || selectedOwner) && <div className="dgt-selection"><button aria-label="Clear selection" onClick={() => onSelectNode?.(null)}>×</button>
         <strong>{selectedNode?.label ?? selectedOwner?.label}</strong><span>{selectedNode?.subtitle ?? selectedOwner?.lead}</span>
         <small>{selectedNode ? selectedNode.layerId : `${data.ownership?.filter((link) => link.ownerId === activeSelectionId).length ?? 0} owned entities`}</small>
       </div>}
-      <div className="dgt-legend"><span>◉ Resource</span><span>⬡ Component</span><span>⬢ BFF</span><span>▣ App</span><span>━ In-layer dependency</span><span>┄ Cross-layer</span></div>
+      {showLegend && <div className="dgt-legend"><span>◉ Cylinder</span><span>▭ Box</span><span>⬡ Hexagon</span><span>▣ Panel</span><span>━ In-layer dependency</span><span>┄ Cross-layer</span></div>}
+      <div className="dgt-view-toolbar" role="toolbar" aria-label="Camera view">{(['3d', 'top', 'side', 'front'] as const).map((option) =>
+        <button key={option} type="button" className={view === option ? 'is-active' : ''}
+          aria-pressed={view === option} onClick={() => selectView(option)}>
+          <span aria-hidden="true">{option === '3d' ? '◈' : option === 'top' ? '▣' : option === 'side' ? '☷' : '▥'}</span>
+          {option === '3d' ? '3D' : option[0].toUpperCase() + option.slice(1)}
+        </button>)}</div>
     </div>
     {showPanel && <aside className="dgt-owners"><div className="dgt-owners-heading"><h3>Owners</h3><span>2D</span></div>
       <p>Stays flat while the stack rotates</p>

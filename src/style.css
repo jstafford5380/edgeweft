@@ -6,13 +6,20 @@
 .dgt-heading h2 { margin: 0 0 4px; font-size: 22px; font-weight: 600; letter-spacing: -.02em; }
 .dgt-heading p { margin: 0; color: #b2b6ca; font-size: 13px; }
 .dgt-world-labels { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
-.dgt-shelf-label { position: absolute; left: 0; top: 0; width: 165px; display: grid; gap: 3px; text-align: right; color: #e7e5fe; font: 500 14px/1.15 Inter, system-ui, sans-serif; text-shadow: 0 0 8px #10111e, 0 0 18px #10111e; will-change: transform; }
+.dgt-shelf-label { position: absolute; left: 0; top: 0; width: 165px; display: grid; gap: 3px; text-align: right; color: #e7e5fe; font: 500 14px/1.15 Inter, system-ui, sans-serif; text-shadow: 0 0 8px #10111e, 0 0 18px #10111e; transform-origin: top left; will-change: transform; }
 .dgt-shelf-label span { color: #b2b6ca; font-size: 12px; line-height: 1.25; }
-.dgt-node-label { position: absolute; left: 0; top: 0; color: #f5f4ff; font: 500 12.5px/1.2 Inter, system-ui, sans-serif; white-space: nowrap; text-shadow: 0 0 6px #10111e, 0 0 10px #10111e, 0 0 4px #10111e; will-change: transform, opacity; }
+.dgt-node-label { position: absolute; left: 0; top: 0; color: #f5f4ff; font: 500 12.5px/1.2 Inter, system-ui, sans-serif; white-space: nowrap; text-shadow: 0 0 6px #10111e, 0 0 10px #10111e, 0 0 4px #10111e; transform-origin: top left; will-change: transform, opacity; }
 .dgt-node-label span { color: #d2cefd; }
 .dgt-node-label.is-selected { color: #fff0b0; }
 .dgt-node-label.is-dimmed { opacity: .15; }
 .dgt-legend { position: absolute; z-index: 3; left: 18px; bottom: 15px; display: flex; gap: 14px; flex-wrap: wrap; color: #cfd3e5; font-size: 11px; pointer-events: none; }
+.dgt-view-toolbar { position: absolute; z-index: 4; right: 16px; bottom: 14px; display: flex; align-items: center; gap: 2px; padding: 4px; border: 1px solid #aaa2da40; border-radius: 10px; background: #1d1c31c9; box-shadow: 0 6px 24px #08091b55; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.dgt-view-toolbar button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 5px 9px; border: 1px solid transparent; border-radius: 7px; color: #c9c6df; background: transparent; font: 500 11px/1 Inter, system-ui, sans-serif; cursor: pointer; transition: color .18s, background .18s, border-color .18s; }
+.dgt-view-toolbar button span { color: #a9a1db; font-size: 13px; line-height: 1; }
+.dgt-view-toolbar button:hover { color: #f3f0ff; background: #8880bc24; }
+.dgt-view-toolbar button.is-active { border-color: #a99bdf38; color: #f3f0ff; background: #a99bdf24; }
+.dgt-view-toolbar button.is-active span { color: #c7b9ff; }
+.dgt-view-toolbar button:focus-visible { outline: 2px solid #c7b9ff; outline-offset: 2px; }
 .dgt-owners { position: relative; z-index: 3; min-width: 0; padding: 18px 12px; overflow: auto; background: #222431; border-left: 1px solid #3f424d; }
 .dgt-owners-heading { display: flex; align-items: center; gap: 7px; }
 .dgt-owners-heading h3 { margin: 0; color: #e7e5fe; font-size: 17px; font-weight: 600; }
@@ -31,4 +38,5 @@
 .dgt-selection strong { font-size: 16px; }.dgt-selection span, .dgt-selection small { color: #b2b6ca; font-size: 12px; }
 .dgt-selection button { position: absolute; top: 4px; right: 6px; border: 0; background: transparent; color: #b2b6ca; font-size: 20px; cursor: pointer; }
 .dgt-error { padding: 1rem; color: #8d1d1d; background: #fff0f0; }
-@media (max-width: 760px) { .dgt-board { grid-template-columns: minmax(0, 1fr); } .dgt-owners { display: none; } .dgt-heading { left: 14px; top: 12px; } .dgt-heading h2 { font-size: 18px; } .dgt-heading p { font-size: 11px; } .dgt-legend { font-size: 9px; gap: 7px; } }
+@media (max-width: 1050px) { .dgt-legend { bottom: 63px; } }
+@media (max-width: 760px) { .dgt-board { grid-template-columns: minmax(0, 1fr); } .dgt-owners { display: none; } .dgt-heading { left: 14px; top: 12px; } .dgt-heading h2 { font-size: 18px; } .dgt-heading p { font-size: 11px; } .dgt-legend { font-size: 9px; gap: 7px; } .dgt-view-toolbar { right: 10px; bottom: 10px; } .dgt-view-toolbar button { min-height: 30px; padding: 5px 7px; } }

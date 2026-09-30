@@ -1,15 +1,22 @@
 import type { GraphData, GraphNode } from './types';
 
+/** A graph node with resolved coordinates on its layer. */
 export interface PositionedGraphNode extends GraphNode {
+  /** Resolved horizontal position in scene units. */
   x: number;
+  /** Resolved depth position in scene units. */
   z: number;
 }
 
+/** Result of laying out one graph snapshot. */
 export interface GraphLayout {
+  /** Input nodes with pinned or automatically assigned coordinates. */
   nodes: PositionedGraphNode[];
+  /** Width of every shelf in scene units, expanded to contain the nodes. */
   width: number;
+  /** Depth of every shelf in scene units, expanded to contain the nodes. */
   depth: number;
-  /** IDs that were placed automatically, for continuity across snapshots. */
+  /** IDs placed automatically; pass this layout back to preserve their positions across snapshots. */
   automaticIds: string[];
 }
 
@@ -58,7 +65,15 @@ function crosses(a: Point, b: Point, c: Point, d: Point): boolean {
   return abC * abD < 0 && cdA * cdB < 0;
 }
 
-/** Resolve missing coordinates. A previous layout preserves surviving node positions across snapshots. */
+/**
+ * Resolve missing node coordinates and size the shelves for the resulting graph.
+ * Explicit `x` and `z` coordinates take precedence. Automatic placement spreads nodes
+ * apart and uses relationship lengths and crossings as layout heuristics.
+ *
+ * @param data - Graph snapshot to lay out.
+ * @param previous - Prior result, used to keep surviving automatic nodes in place when possible.
+ * @returns Positioned nodes, shelf dimensions, and IDs of automatically placed nodes.
+ */
 export function layoutGraph(data: GraphData, previous?: GraphLayout): GraphLayout {
   const coordinates = new Map<string, Point>();
   const fixedIds = new Set(data.nodes.filter(hasPosition).map((node) => node.id));

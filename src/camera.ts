@@ -1,3 +1,4 @@
+/** Built-in camera presets for the full stack (`3d`) and orthogonal views. */
 export type GraphView = '3d' | 'top' | 'side' | 'front';
 
 export interface CameraPose {

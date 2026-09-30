@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getConnectedNodes, validateGraph } from './graph';
-import type { GraphData } from './types';
+import { graphNodeShapes, type GraphData } from './types';
 
 describe('graph helpers', () => {
   const data: GraphData = {
@@ -39,5 +39,15 @@ describe('graph helpers', () => {
       owners: [{ id: 'team', label: 'Team' }],
       ownership: [{ nodeId: 'a', ownerId: 'missing' }],
     })).toEqual(['Unknown owner: missing']);
+  });
+
+  it('supports different node shapes in one layer and rejects unknown shapes', () => {
+    expect(graphNodeShapes).toEqual(['cylinder', 'box', 'hexagon', 'panel']);
+    expect(validateGraph({ ...data, nodes: [
+      { ...data.nodes[0], shape: 'cylinder' },
+      { ...data.nodes[1], shape: 'panel' },
+    ] })).toEqual([]);
+    expect(validateGraph({ ...data, nodes: [{ ...data.nodes[0], shape: 'sphere' as never }, data.nodes[1]] }))
+      .toContain('Unsupported shape for a: sphere');
   });
 });

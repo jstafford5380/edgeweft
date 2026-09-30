@@ -1,5 +1,13 @@
-import type { GraphData, GraphEdge, GraphNode } from './types';
+import { graphNodeShapes, type GraphData, type GraphEdge, type GraphNode } from './types';
 
+/**
+ * Get a node and its directly connected neighbors, ignoring edge direction.
+ *
+ * @param nodeId - Node whose immediate neighborhood to find.
+ * @param edges - Directed graph edges to inspect.
+ * @param visibleEdgeTypes - Optional filter; untyped edges use `dependency`.
+ * @returns A set containing `nodeId` and the IDs of its direct neighbors.
+ */
 export function getConnectedNodes(nodeId: string, edges: readonly GraphEdge[], visibleEdgeTypes?: ReadonlySet<string>): Set<string> {
   const connected = new Set([nodeId]);
   for (const edge of edges) {
@@ -10,10 +18,16 @@ export function getConnectedNodes(nodeId: string, edges: readonly GraphEdge[], v
   return connected;
 }
 
+/** Find a node by ID in a graph snapshot, or return `undefined` if it is absent. */
 export function getNodeById(data: GraphData, id: string): GraphNode | undefined {
   return data.nodes.find((node) => node.id === id);
 }
 
+/**
+ * Check graph IDs, references, pinned coordinates, and supported node shapes.
+ *
+ * @returns Human-readable validation errors; an empty array means the graph is valid.
+ */
 export function validateGraph(data: GraphData): string[] {
   const errors: string[] = [];
   const layerIds = new Set<string>();
@@ -28,6 +42,7 @@ export function validateGraph(data: GraphData): string[] {
     if ((node.x === undefined) !== (node.z === undefined)) errors.push(`Incomplete position for ${node.id}: supply both x and z`);
     if (node.x !== undefined && !Number.isFinite(node.x)) errors.push(`Invalid x position for ${node.id}`);
     if (node.z !== undefined && !Number.isFinite(node.z)) errors.push(`Invalid z position for ${node.id}`);
+    if (node.shape !== undefined && !graphNodeShapes.includes(node.shape)) errors.push(`Unsupported shape for ${node.id}: ${node.shape}`);
     nodeIds.add(node.id);
   }
   const edgeIds = new Set<string>();
