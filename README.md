@@ -27,9 +27,15 @@ import { DependencyGraph, type GraphData } from 'dependency-graph-thing';
 import 'dependency-graph-thing/style.css';
 
 const data: GraphData = {
-  layers: [{ id: 'services', key: 'L1', label: 'Services' }],
-  nodes: [{ id: 'api', label: 'API', layerId: 'services', shape: 'box' }],
-  edges: [],
+  layers: [
+    { id: 'services', key: 'L1', label: 'Services' },
+    { id: 'teams', label: 'Teams', type: 'right2d' },
+  ],
+  nodes: [
+    { id: 'api', label: 'API', layerId: 'services', shape: 'box' },
+    { id: 'platform', label: 'Platform', layerId: 'teams', subtitle: 'Maintainer team' },
+  ],
+  edges: [{ source: 'api', target: 'platform', type: 'association' }],
 };
 
 <div style={{ height: 600 }}>
@@ -37,13 +43,17 @@ const data: GraphData = {
 </div>;
 ```
 
-The component includes gridded 3D shelves, node shapes, relationship lines, animated edge flow, bloom, camera presets, and an optional 2D owners panel. The test rail uses the full v3 prototype fixture. Each edge is directed from `source` to `target`; the flow particle travels in that direction. Set `flow={false}` to turn off the particles.
+The component includes gridded 3D shelves, optional left and right 2D rails, relationship lines, animated call flow, bloom, and camera presets. The test rail adapts the v3 prototype fixture. Each edge is directed from `source` to `target`; only `call` edges show a flow particle traveling in that direction, including calls to 2D nodes. Set `flow={false}` to turn off the particles.
+
+Set `GraphLayer.type` to `left2d` or `right2d` to place its nodes in a side rail; omit it or use `default` for a 3D shelf. Several layers can share a rail, each with its own heading. Rails disappear when they contain no visible nodes and stack below the canvas when the component is narrow. `visibleLayerIds` applies to both 3D and 2D layers. Side nodes use the same `GraphNode` and `GraphEdge` types as 3D nodes; their `x`, `z`, and `shape` fields are ignored. The old owner-specific types and `showOwners` prop have been removed.
 
 Appearance and relationship visibility are controlled through component props:
 
 ```tsx
 <DependencyGraph
   data={data}
+  mode={appMode}
+  baseColor="#968ae0"
   glowIntensity={0.45}
   shelfOpacity={0.5}
   showGrid={false}
@@ -56,13 +66,13 @@ Appearance and relationship visibility are controlled through component props:
 />
 ```
 
-`glowIntensity` defaults to `0.65` and accepts values from `0` (off) to `2`; `bloom={false}` also disables it. `shelfOpacity` controls the shelf fill from `0` (fully transparent) to `1` (opaque) and defaults to the original `0.32`. Shelf outlines and the front edge scale with it relative to that default. `showGrid` separately controls both shelf and ground grid lines. `visibleEdgeTypes` accepts any edge type IDs, so the test rail's Dependencies, Calls, and Resource usage switches work without special cases in the package. `flow`, `showLabels`, and `showLegend` default to `true`. For `title` and `description`, `undefined` uses the automatic text for the current view, a string sets custom text, and `null` hides it. `showOwners` controls the optional 2D owners panel.
+`mode="dark" | "light"` lets the host app control the graph's appearance at runtime; it defaults to `dark` and does not depend on the host's CSS theme. `GraphMode` is exported for typed state. `baseColor` accepts a CSS hex color (`#RGB` or `#RRGGBB`) and defaults to `#968ae0`. Both modes derive their shelf, node, link, background, label, and control shades from it. `glowIntensity` defaults to `0.65` and accepts values from `0` (off) to `2`; `bloom={false}` also disables it. Light mode uses a gentler bloom strength so lines remain readable. `shelfOpacity` controls the shelf fill from `0` (fully transparent) to `1` (opaque) and defaults to the original `0.32`. Shelf outlines and the front edge scale with it relative to that default. `showGrid` separately controls both shelf and ground grid lines. Edge types are limited to `dependency`, `call`, `resource`, and `association`; `GraphEdgeType` and `graphEdgeTypes` expose that set to consumers. An omitted edge type means `dependency`. `visibleEdgeTypes` filters those categories. `flow`, `showLabels`, and `showLegend` default to `true`. For `title` and `description`, `undefined` uses the automatic text for the current view, a string sets custom text, and `null` hides it.
 
-Node `x` and `z` coordinates are optional. Missing positions are laid out deterministically on collision-safe slots within each layer; the layout improves edge length and projected crossings, and shelves grow to fit dense layers. Supplying both coordinates pins a node in place. The exported `layoutGraph(data)` helper returns resolved node positions and shelf dimensions. The test rail's **Auto layout** switch applies this to the prototype graph.
+On 3D layers, node `x` and `z` coordinates are optional. Missing positions are laid out deterministically on collision-safe slots within each layer; the layout improves edge length and projected crossings, and shelves grow to fit dense layers. Supplying both coordinates pins a node in place. The exported `layoutGraph(data)` helper returns only 3D nodes with resolved positions and shelf dimensions. The test rail's **Auto layout** switch applies this to the prototype graph.
 
-Pass a new, immutable `GraphData` snapshot to update the graph. Keep layer, node, and owner IDs stable across snapshots; give edges an `id` when their endpoints or type may change. Existing automatic node positions are retained where possible. When a node's position changes, the node and its connectors ease to the new position; new nodes appear at their assigned positions. Removing a selected ID clears the selection through `onSelectNode(null)`. The test rail's **Live data** controls exercise add, remove, and recurring updates.
+Pass a new, immutable `GraphData` snapshot to update the graph. Keep layer and node IDs stable across snapshots; give edges an `id` when their endpoints or type may change. Existing automatic node positions are retained where possible. When a node's position changes, the node and its connectors ease to the new position; new nodes appear at their assigned positions. Removing a selected ID clears the selection through `onSelectNode(null)`. The test rail's **Live data** controls exercise add, remove, and recurring updates.
 
-Layers are groupings with an ID, label, and optional display metadata; they do not determine node geometry. Set `shape` on each node to `cylinder`, `box`, `hexagon`, or `panel`. Nodes without a shape use `box`. The exported `graphNodeShapes` array lists supported values. Nodes with different shapes can share a layer.
+Layers are groupings with an ID, label, and optional display metadata; their `type` controls placement. On 3D layers, set `shape` on each node to `cylinder`, `box`, `hexagon`, or `panel`. Nodes without a shape use `box`. The exported `graphNodeShapes` array lists supported values. Nodes with different shapes can share a layer.
 
 The canvas includes a floating 3D, Top, Side, and Front toolbar. Without a `view` prop it manages the current view itself. To control the view from your app, pass `view` and update it in `onViewChange`; the callback also fires when orbiting away from a focused top view. Camera view changes ease over 900 ms; selecting a layer eases into its top view over 1100 ms. In a focused top view, higher layers fade out and lower layers remain faint. Rotating away from overhead restores the full stack. Pass a new `cameraRequestKey` value to recenter the camera when the selected view and layer have not changed; clicking the active toolbar view also recenters it.
 

@@ -1,22 +1,25 @@
 import { useEffect, useMemo, useState } from 'react';
-import { DependencyGraph, type GraphData, type GraphView } from '../src';
-import { sampleGraph } from './sampleGraph';
+import { DependencyGraph, type GraphData, type GraphEdge, type GraphEdgeType, type GraphMode, type GraphView } from '../src';
+import { leftExampleEdges, leftExampleNodes, sampleGraph } from './sampleGraph';
 import './style.css';
 
-const relationships = [
+const relationships: { id: GraphEdgeType; label: string; span: string; line: string }[] = [
   { id: 'dependency', label: 'Dependencies', span: 'in layer', line: 'solid' },
   { id: 'call', label: 'Calls', span: 'cross-layer', line: 'dashed' },
   { id: 'resource', label: 'Resource usage', span: '→ L0', line: 'dotted' },
+  { id: 'association', label: 'Associations', span: '↔ 2D', line: 'dashed' },
 ];
 type TextMode = 'automatic' | 'custom' | 'hidden';
 
 export function App() {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [visibleLayerIds, setVisibleLayerIds] = useState(sampleGraph.layers.map((layer) => layer.id));
-  const [visibleEdgeTypes, setVisibleEdgeTypes] = useState(relationships.map((type) => type.id));
-  const [showOwners, setShowOwners] = useState(true);
+  const [visibleEdgeTypes, setVisibleEdgeTypes] = useState<GraphEdgeType[]>(relationships.map((type) => type.id));
+  const [showLeftExample, setShowLeftExample] = useState(false);
   const [flow, setFlow] = useState(true);
   const [glowIntensity, setGlowIntensity] = useState(0.65);
+  const [baseColor, setBaseColor] = useState('#968ae0');
+  const [mode, setMode] = useState<GraphMode>('dark');
   const [shelfOpacity, setShelfOpacity] = useState(0.32);
   const [showGrid, setShowGrid] = useState(true);
   const [showLabels, setShowLabels] = useState(true);
@@ -39,15 +42,15 @@ export function App() {
       : sampleGraph.nodes;
     return {
       ...sampleGraph,
-      nodes: [...nodes, ...Array.from({ length: liveCount }, (_, index) => ({
+      nodes: [...nodes, ...(showLeftExample ? leftExampleNodes : []), ...Array.from({ length: liveCount }, (_, index) => ({
         id: `live-${index + 1}`, label: `live-service-${index + 1}`, layerId: 'components',
         shape: (['cylinder', 'box', 'hexagon', 'panel'] as const)[index], subtitle: 'Live snapshot',
       }))],
-      edges: [...sampleGraph.edges, ...Array.from({ length: liveCount }, (_, index) => ({
+      edges: [...sampleGraph.edges, ...(showLeftExample ? leftExampleEdges : []), ...Array.from({ length: liveCount }, (_, index): GraphEdge => ({
         source: `live-${index + 1}`, target: 'orders', type: 'dependency',
       }))],
     };
-  }, [autoLayout, liveCount]);
+  }, [autoLayout, liveCount, showLeftExample]);
   useEffect(() => {
     if (!liveUpdates) return;
     const timer = window.setInterval(() => setLiveCount((count) => (count + 1) % 5), 1800);
@@ -62,7 +65,7 @@ export function App() {
   function toggleLayer(id: string) {
     setVisibleLayerIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   }
-  function toggleType(id: string) {
+  function toggleType(id: GraphEdgeType) {
     setVisibleEdgeTypes((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   }
 
@@ -70,7 +73,7 @@ export function App() {
     <header className="rail-nav"><div className="rail-brand"><span>▱</span> System graph</div></header>
     <main className="rail-main">
       <aside className="rail-sidebar">
-        <section><h2>Layers</h2>{[...sampleGraph.layers].reverse().map((layer) => {
+        <section><h2>Layers</h2>{[...sampleGraph.layers].filter((layer) => !layer.type || layer.type === 'default').reverse().map((layer) => {
           const count = graphData.nodes.filter((node) => node.layerId === layer.id).length;
           const active = visibleLayerIds.includes(layer.id);
           return <div className={`rail-row${active ? '' : ' is-muted'}`} key={layer.id}>
@@ -79,15 +82,34 @@ export function App() {
             </button><button className="rail-eye" onClick={() => toggleLayer(layer.id)} aria-label={`${active ? 'Hide' : 'Show'} ${layer.label}`}>{active ? '◉' : '○'}</button>
           </div>;
         })}</section>
-        <section><h2>2D group</h2><button className={`rail-row rail-flat${showOwners ? '' : ' is-muted'}`} onClick={() => setShowOwners(!showOwners)}>
-          <span className="rail-key">2D</span><span className="rail-symbol">◎</span><span className="rail-name">Owners</span><span className="rail-count">{sampleGraph.owners?.length}</span><span className="rail-eye">{showOwners ? '◉' : '○'}</span>
-        </button></section>
+        <section><h2>2D groups</h2>{sampleGraph.layers.filter((layer) => layer.type === 'right2d' || layer.id === 'external').map((layer) => {
+          const active = visibleLayerIds.includes(layer.id) && (layer.id !== 'external' || showLeftExample);
+          const count = graphData.nodes.filter((node) => node.layerId === layer.id).length;
+          return <button key={layer.id} className={`rail-row rail-flat${active ? '' : ' is-muted'}`} onClick={() => {
+            if (layer.id === 'external') {
+              setShowLeftExample(!showLeftExample);
+              if (!visibleLayerIds.includes(layer.id)) setVisibleLayerIds((current) => [...current, layer.id]);
+            } else toggleLayer(layer.id);
+          }} aria-pressed={active}>
+            <span className="rail-key">{layer.type === 'left2d' ? 'L' : 'R'}</span><span className="rail-symbol">▱</span>
+            <span className="rail-name">{layer.label}</span><span className="rail-count">{count}</span><span className="rail-eye">{active ? '◉' : '○'}</span>
+          </button>;
+        })}</section>
         <section><h2>Relationships</h2>{relationships.map((type) => <button key={type.id} className={`rail-relation${visibleEdgeTypes.includes(type.id) ? '' : ' is-muted'}`} onClick={() => toggleType(type.id)}>
           <span className={`rail-line ${type.line}`} /><span>{type.label}</span><small>{type.span}</small><span className="rail-check">{visibleEdgeTypes.includes(type.id) ? '☑' : '□'}</span>
-        </button>)}<button className={`rail-relation${flow ? '' : ' is-muted'}`} onClick={() => setFlow(!flow)} aria-label="Animated flow" aria-pressed={flow}>
-          <span className="rail-line solid" /><span>Flow</span><small>source → target</small><span className="rail-check">{flow ? '☑' : '□'}</span>
+        </button>)}<button className={`rail-relation${flow ? '' : ' is-muted'}`} onClick={() => setFlow(!flow)} aria-label="Animated call flow" aria-pressed={flow}>
+          <span className="rail-line solid" /><span>Call flow</span><small>source → target</small><span className="rail-check">{flow ? '☑' : '□'}</span>
         </button></section>
         <section className="rail-config"><h2>Appearance</h2>
+          <label className="rail-config-field">Mode
+            <select aria-label="Graph mode" value={mode} onChange={(event) => setMode(event.target.value as GraphMode)}>
+              <option value="dark">Dark</option><option value="light">Light</option>
+            </select>
+          </label>
+          <label className="rail-config-field">Base color
+            <input aria-label="Base color" type="color" value={baseColor}
+              onInput={(event) => setBaseColor(event.currentTarget.value)} onChange={(event) => setBaseColor(event.target.value)} />
+          </label>
           <label className="rail-config-field">Glow intensity
             <input aria-label="Glow intensity" type="number" min="0" max="2" step="0.05" value={glowIntensity}
               onChange={(event) => setGlowIntensity(Math.max(0, Math.min(2, Number(event.target.value))))} />
@@ -134,9 +156,10 @@ export function App() {
         <div className="rail-help">Drag to orbit · Shift-drag to pan<br />Scroll to zoom<br />Choose a layer for its top view</div>
       </aside>
       <div className="rail-content"><DependencyGraph data={graphData} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
-        visibleLayerIds={visibleLayerIds} visibleEdgeTypes={visibleEdgeTypes} showOwners={showOwners}
+        visibleLayerIds={visibleLayerIds} visibleEdgeTypes={visibleEdgeTypes}
         layerSpacing={layerSpacing} layerZSpacing={layerZSpacing}
         view={view} focusedLayerId={focusedLayerId} cameraRequestKey={cameraRequestKey} onViewChange={setView} flow={flow}
+        baseColor={baseColor} mode={mode}
         glowIntensity={glowIntensity} shelfOpacity={shelfOpacity} showGrid={showGrid} showLabels={showLabels} showLegend={showLegend}
         title={titleMode === 'automatic' ? undefined : titleMode === 'hidden' ? null : customTitle}
         description={descriptionMode === 'automatic' ? undefined : descriptionMode === 'hidden' ? null : customDescription} /></div>

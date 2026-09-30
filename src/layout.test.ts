@@ -101,4 +101,20 @@ describe('automatic graph layout', () => {
     expect(automatic.nodes[0]).not.toMatchObject({ x: 480, z: 300 });
     expect(automatic.automaticIds).toContain('a');
   });
+
+  it('excludes 2D nodes from shelf placement and dimensions', () => {
+    const data: GraphData = {
+      layers: [...layers, { id: 'left', label: 'Left', type: 'left2d' }, { id: 'right', label: 'Right', type: 'right2d' }],
+      nodes: [
+        { id: 'a', label: 'A', layerId: 'lower' },
+        { id: 'left', label: 'Left', layerId: 'left', x: 50000, z: 50000 },
+        { id: 'right', label: 'Right', layerId: 'right' },
+      ],
+      edges: [{ source: 'a', target: 'left' }, { source: 'left', target: 'right' }],
+    };
+    const layout = layoutGraph(data);
+    expect(layout.nodes.map((node) => node.id)).toEqual(['a']);
+    expect(layout.width).toBe(1080);
+    expect(layout.depth).toBe(580);
+  });
 });

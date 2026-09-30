@@ -1,6 +1,6 @@
-import type { GraphData, GraphEdge, GraphNodeShape } from '../src';
+import type { GraphData, GraphEdge, GraphEdgeType, GraphNode, GraphNodeShape } from '../src';
 
-// Data and positions from the v3 Claude prototype. Ownership is kept in 2D.
+// Data and positions from the v3 Claude prototype. Side groups use ordinary nodes and edges.
 const nodes: [string, string, number, number, number, string][] = [
   ['sessions', 'session-cache', 0, 30, -165, 'Redis'], ['usersdb', 'users-db', 0, 190, -150, 'Postgres'],
   ['ordersdb', 'orders-db', 0, 40, -10, 'Postgres'], ['stripe', 'stripe-api', 0, 200, -30, 'External API'],
@@ -19,12 +19,12 @@ const nodes: [string, string, number, number, number, string][] = [
   ['partner-portal', 'partner-portal', 3, -190, 140, 'Partner web'],
 ];
 
-const edgeLists = {
+const edgeLists: Record<Extract<GraphEdgeType, 'dependency' | 'call' | 'resource'>, string> = {
   dependency: 'orders>pay orders>inv orders>notif pay>notif search>inv analytics>orders users>notif auth>users search>catalog invdb>es kafka>warehouse',
   call: 'web-app>web-bff partner-portal>web-bff mobile-app>mobile-bff admin-console>admin-bff web-bff>auth web-bff>orders web-bff>search web-bff>catalog mobile-bff>auth mobile-bff>orders mobile-bff>search mobile-bff>notif admin-bff>users admin-bff>inv admin-bff>analytics',
   resource: 'auth>sessions users>usersdb orders>ordersdb orders>kafka pay>stripe pay>kafka inv>invdb inv>kafka search>es notif>kafka analytics>warehouse analytics>kafka catalog>cdn web-app>cdn',
 };
-const edges: GraphEdge[] = Object.entries(edgeLists).flatMap(([type, list]) =>
+const edges: GraphEdge[] = (Object.entries(edgeLists) as [GraphEdgeType, string][]).flatMap(([type, list]) =>
   list.split(' ').map((pair) => { const [source, target] = pair.split('>'); return { source, target, type }; }),
 );
 
@@ -36,6 +36,17 @@ const ownerList: [string, string, string][] = [
 ];
 const ownership = 'web-app>o-clients mobile-app>o-clients partner-portal>o-clients web-bff>o-exp mobile-bff>o-exp admin-console>o-back admin-bff>o-back auth>o-identity users>o-identity sessions>o-identity usersdb>o-identity orders>o-commerce pay>o-commerce inv>o-commerce ordersdb>o-commerce stripe>o-commerce invdb>o-commerce search>o-discovery catalog>o-discovery es>o-discovery notif>o-platform kafka>o-platform cdn>o-platform analytics>o-data warehouse>o-data';
 const shapes: GraphNodeShape[] = ['cylinder', 'box', 'hexagon', 'panel'];
+export const leftExampleNodes: GraphNode[] = [
+  { id: 'cloud-provider', label: 'Cloud Provider', layerId: 'external', subtitle: 'Infrastructure' },
+  { id: 'identity-provider', label: 'Identity Provider', layerId: 'external', subtitle: 'Authentication' },
+  { id: 'support-vendor', label: 'Support Vendor', layerId: 'partners', subtitle: 'Operations' },
+];
+export const leftExampleEdges: GraphEdge[] = [
+  { id: 'external-cloud', source: 'cloud-provider', target: 'cdn', type: 'association' },
+  { id: 'external-identity', source: 'auth', target: 'identity-provider', type: 'call' },
+  { id: 'external-peer', source: 'cloud-provider', target: 'identity-provider', type: 'association' },
+  { id: 'partner-link', source: 'identity-provider', target: 'support-vendor', type: 'association' },
+];
 
 export const sampleGraph: GraphData = {
   layers: [
@@ -43,15 +54,16 @@ export const sampleGraph: GraphData = {
     { id: 'components', key: 'L1', label: 'Components', description: 'Domain services and workers' },
     { id: 'bffs', key: 'L2', label: 'BFFs', description: 'Backends shaped for each client' },
     { id: 'apps', key: 'L3', label: 'Apps', description: 'User-facing clients' },
+    { id: 'owners', label: 'Owners', description: 'Stays flat while the stack rotates', type: 'right2d' },
+    { id: 'external', label: 'External systems', description: 'Optional left-side example', type: 'left2d' },
+    { id: 'partners', label: 'Partners', description: 'Second left-side group', type: 'left2d' },
   ],
-  nodes: nodes.map(([id, label, layer, x, z, subtitle]) => ({
+  nodes: [...nodes.map(([id, label, layer, x, z, subtitle]) => ({
     id, label, layerId: ['resources', 'components', 'bffs', 'apps'][layer], shape: shapes[layer],
     x: x * 1.5, z: z * 1.3, subtitle,
-  })),
-  edges,
-  owners: ownerList.map(([id, label, lead]) => ({ id, label, lead })),
-  ownership: ownership.split(' ').map((pair) => {
-    const [nodeId, ownerId] = pair.split('>');
-    return { nodeId, ownerId };
-  }),
+  })), ...ownerList.map(([id, label, lead]) => ({ id, label, subtitle: lead, layerId: 'owners' }))],
+  edges: [...edges, ...ownership.split(' ').map((pair): GraphEdge => {
+    const [source, target] = pair.split('>');
+    return { source, target, type: 'association' };
+  })],
 };

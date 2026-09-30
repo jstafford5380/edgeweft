@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { getConnectedNodes, validateGraph } from './graph';
-import { graphNodeShapes, type GraphData } from './types';
+import { graphEdgeTypes, graphNodeShapes, type GraphData, type GraphEdge } from './types';
 
 describe('graph helpers', () => {
   const data: GraphData = {
@@ -18,7 +18,7 @@ describe('graph helpers', () => {
   });
 
   it('only highlights neighbors on visible relationship types', () => {
-    const edges = [...data.edges, { source: 'a', target: 'c', type: 'call' }];
+    const edges: GraphEdge[] = [...data.edges, { source: 'a', target: 'c', type: 'call' }];
     expect([...getConnectedNodes('a', edges, new Set(['call']))]).toEqual(['a', 'c']);
   });
 
@@ -28,17 +28,34 @@ describe('graph helpers', () => {
       .toEqual(['Unknown edge target: missing']);
   });
 
-  it('validates 2D ownership links', () => {
+  it('limits relationship types to the public categories', () => {
+    expect(graphEdgeTypes).toEqual(['dependency', 'call', 'resource', 'association']);
+    expect(validateGraph({ ...data, edges: [{ source: 'a', target: 'b', type: 'owner' as never }] }))
+      .toContain('Unsupported edge type: owner');
+  });
+
+  it('validates directed links between 2D and 3D nodes', () => {
     expect(validateGraph({
       ...data,
-      owners: [{ id: 'team', label: 'Team' }],
-      ownership: [{ nodeId: 'a', ownerId: 'team' }],
+      layers: [...data.layers, { id: 'teams', label: 'Teams', type: 'right2d' }],
+      nodes: [...data.nodes, { id: 'team', label: 'Team', layerId: 'teams' }],
+      edges: [...data.edges, { source: 'a', target: 'team' }],
     })).toEqual([]);
     expect(validateGraph({
       ...data,
-      owners: [{ id: 'team', label: 'Team' }],
-      ownership: [{ nodeId: 'a', ownerId: 'missing' }],
-    })).toEqual(['Unknown owner: missing']);
+      edges: [{ source: 'a', target: 'missing' }],
+    })).toEqual(['Unknown edge target: missing']);
+  });
+
+  it('accepts 2D positions as ignored metadata and rejects unknown layer types', () => {
+    const side: GraphData = {
+      layers: [...data.layers, { id: 'side', label: 'Side', type: 'left2d' }],
+      nodes: [...data.nodes, { id: 'side-node', label: 'Side', layerId: 'side', x: 5 }], edges: data.edges,
+    };
+    expect(validateGraph(side)).toEqual([]);
+    expect(validateGraph({ ...side, layers: [...data.layers,
+      { id: 'side', label: 'Side', type: 'floating' as never }] }))
+      .toContain('Unsupported layer type for side: floating');
   });
 
   it('supports different node shapes in one layer and rejects unknown shapes', () => {

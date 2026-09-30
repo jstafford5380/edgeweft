@@ -4,4 +4,6 @@ export { getConnectedNodes, getNodeById, validateGraph } from './graph';
 export { layoutGraph } from './layout';
 export type { GraphLayout, PositionedGraphNode } from './layout';
 export { graphNodeShapes } from './types';
-export type { GraphData, GraphEdge, GraphLayer, GraphNode, GraphNodeShape, GraphOwner, GraphOwnership } from './types';
+export { graphEdgeTypes } from './types';
+export type { GraphData, GraphEdge, GraphEdgeType, GraphLayer, GraphLayerType, GraphNode, GraphNodeShape } from './types';
+export type { GraphMode } from './theme';

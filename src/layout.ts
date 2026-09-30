@@ -1,6 +1,6 @@
 import type { GraphData, GraphNode } from './types';
 
-/** A graph node with resolved coordinates on its layer. */
+/** A 3D graph node with resolved coordinates on its shelf. */
 export interface PositionedGraphNode extends GraphNode {
   /** Resolved horizontal position in scene units. */
   x: number;
@@ -10,7 +10,7 @@ export interface PositionedGraphNode extends GraphNode {
 
 /** Result of laying out one graph snapshot. */
 export interface GraphLayout {
-  /** Input nodes with pinned or automatically assigned coordinates. */
+  /** 3D nodes with pinned or automatically assigned coordinates; excludes 2D nodes. */
   nodes: PositionedGraphNode[];
   /** Width of every shelf in scene units, expanded to contain the nodes. */
   width: number;
@@ -66,7 +66,7 @@ function crosses(a: Point, b: Point, c: Point, d: Point): boolean {
 }
 
 /**
- * Resolve missing node coordinates and size the shelves for the resulting graph.
+ * Resolve 3D node coordinates and size the shelves for the resulting graph.
  * Explicit `x` and `z` coordinates take precedence. Automatic placement spreads nodes
  * apart and uses relationship lengths and crossings as layout heuristics.
  *
@@ -75,23 +75,26 @@ function crosses(a: Point, b: Point, c: Point, d: Point): boolean {
  * @returns Positioned nodes, shelf dimensions, and IDs of automatically placed nodes.
  */
 export function layoutGraph(data: GraphData, previous?: GraphLayout): GraphLayout {
+  const layers = data.layers.filter((layer) => !layer.type || layer.type === 'default');
+  const spatialLayerIds = new Set(layers.map((layer) => layer.id));
+  const inputNodes = data.nodes.filter((node) => spatialLayerIds.has(node.layerId));
   const coordinates = new Map<string, Point>();
-  const fixedIds = new Set(data.nodes.filter(hasPosition).map((node) => node.id));
+  const fixedIds = new Set(inputNodes.filter(hasPosition).map((node) => node.id));
   const previousNodes = new Map(previous?.nodes.map((node) => [node.id, node]) ?? []);
   const previousAutomaticIds = new Set(previous?.automaticIds ?? []);
   const movableByLayer = new Map<string, string[]>();
   const slotsByLayer = new Map<string, Point[]>();
-  const layerByNode = new Map(data.nodes.map((node) => [node.id, node.layerId]));
+  const layerByNode = new Map(inputNodes.map((node) => [node.id, node.layerId]));
 
-  for (const node of data.nodes) {
+  for (const node of inputNodes) {
     if (hasPosition(node)) coordinates.set(node.id, { x: node.x, z: node.z });
   }
 
   // Explicit positions win. Keep an automatic position only while its layer and clearance remain valid.
-  for (const node of [...data.nodes].sort((a, b) => a.id.localeCompare(b.id))) {
+  for (const node of [...inputNodes].sort((a, b) => a.id.localeCompare(b.id))) {
     if (hasPosition(node)) continue;
     const prior = previousNodes.get(node.id);
-    const blocked = data.nodes.some((other) => other.layerId === node.layerId && coordinates.has(other.id) &&
+    const blocked = inputNodes.some((other) => other.layerId === node.layerId && coordinates.has(other.id) &&
       Math.abs((coordinates.get(other.id)?.x ?? 0) - (prior?.x ?? 0)) < NODE_CLEARANCE_X &&
       Math.abs((coordinates.get(other.id)?.z ?? 0) - (prior?.z ?? 0)) < NODE_CLEARANCE_Z);
     if (prior?.layerId === node.layerId && previousAutomaticIds.has(node.id) && !blocked)
@@ -103,11 +106,11 @@ export function layoutGraph(data: GraphData, previous?: GraphLayout): GraphLayou
     }
   }
 
-  for (const layer of data.layers) {
+  for (const layer of layers) {
     const ids = movableByLayer.get(layer.id);
     if (!ids?.length) continue;
     ids.sort();
-    const fixed = data.nodes.filter((node) => node.layerId === layer.id && coordinates.has(node.id))
+    const fixed = inputNodes.filter((node) => node.layerId === layer.id && coordinates.has(node.id))
       .map((node) => ({ ...node, ...coordinates.get(node.id)! })) as PositionedGraphNode[];
     const slots = candidateSlots(ids.length, fixed);
     slotsByLayer.set(layer.id, slots);
@@ -142,7 +145,7 @@ export function layoutGraph(data: GraphData, previous?: GraphLayout): GraphLayou
 
   const countCrossings = edges.length <= 80;
   let best = score(countCrossings);
-  for (const layer of data.layers) {
+  for (const layer of layers) {
     const ids = movableByLayer.get(layer.id);
     const slots = slotsByLayer.get(layer.id);
     if (!ids?.length || !slots) continue;
@@ -181,7 +184,7 @@ export function layoutGraph(data: GraphData, previous?: GraphLayout): GraphLayou
     }
   }
 
-  const nodes = data.nodes.map((node) => ({ ...node, ...(coordinates.get(node.id) ?? { x: 0, z: 0 }) })) as PositionedGraphNode[];
+  const nodes = inputNodes.map((node) => ({ ...node, ...(coordinates.get(node.id) ?? { x: 0, z: 0 }) })) as PositionedGraphNode[];
   let width = BASE_WIDTH;
   let depth = BASE_DEPTH;
   for (const node of nodes) {
