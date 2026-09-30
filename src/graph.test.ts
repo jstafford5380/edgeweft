@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getConnectedNodes, validateGraph } from './graph';
+import { getConnectedNodes, getDownstreamNodes, validateGraph } from './graph';
 import { graphEdgeTypes, graphNodeShapes, type GraphData, type GraphEdge } from './types';
 
 describe('graph helpers', () => {
@@ -20,6 +20,21 @@ describe('graph helpers', () => {
   it('only highlights neighbors on visible relationship types', () => {
     const edges: GraphEdge[] = [...data.edges, { source: 'a', target: 'c', type: 'call' }];
     expect([...getConnectedNodes('a', edges, new Set(['call']))]).toEqual(['a', 'c']);
+  });
+
+  it('traverses outgoing dependencies recursively without including incoming dependents', () => {
+    const edges: GraphEdge[] = [
+      { source: 'upstream', target: 'a' },
+      { source: 'a', target: 'b' },
+      { source: 'b', target: 'c', type: 'call' },
+      { source: 'c', target: 'd' },
+      { source: 'd', target: 'b' },
+      { source: 'another-dependent', target: 'c' },
+    ];
+    expect([...getDownstreamNodes('a', edges)]).toEqual(['a', 'b', 'c', 'd']);
+    expect([...getDownstreamNodes('c', edges)]).toEqual(['c', 'd', 'b']);
+    expect([...getDownstreamNodes('a', edges, new Set(['dependency']))]).toEqual(['a', 'b']);
+    expect([...getDownstreamNodes('d', edges, new Set())]).toEqual(['d']);
   });
 
   it('reports references that cannot be rendered', () => {

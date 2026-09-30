@@ -7,7 +7,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { cameraPoseForView, easeCubicInOut, interpolateCameraPose, layerZOffset, type CameraPose, type GraphView } from './camera';
-import { getConnectedNodes, validateGraph } from './graph';
+import { getDownstreamNodes, validateGraph } from './graph';
 import { layoutGraph, type GraphLayout, type PositionedGraphData, type PositionedGraphNode } from './layout';
 import { createGraphTheme, DEFAULT_BASE_COLOR, type GraphMode, type GraphTheme } from './theme';
 import type { GraphData, GraphEdge, GraphEdgeType, GraphLayer, GraphLayerType, GraphNode, GraphNodeShape } from './types';
@@ -458,10 +458,10 @@ type SideEdgeRefs = {
   dots: React.RefObject<Map<string, SVGCircleElement>>;
 };
 
-function SideEdgePaths({ edges, nodes, layerTypes, indices, spacing, zSpacing, layerCount, positions, selected, refs, fades, flow, compact }: {
+function SideEdgePaths({ edges, nodes, layerTypes, indices, spacing, zSpacing, layerCount, positions, related, refs, fades, flow, compact }: {
   edges: SideEdge[]; nodes: Map<string, GraphNode>; layerTypes: Map<string, GraphLayerType>;
   indices: Map<string, number>; spacing: number; zSpacing: number; layerCount: number;
-  selected: string | null; refs: SideEdgeRefs; fades: React.RefObject<number[]>;
+  related: Set<string> | null; refs: SideEdgeRefs; fades: React.RefObject<number[]>;
   positions: MotionPositions; flow: boolean; compact: boolean;
 }) {
   const vector = useMemo(() => new Vector3(), []);
@@ -510,16 +510,16 @@ function SideEdgePaths({ edges, nodes, layerTypes, indices, spacing, zSpacing, l
         }
       }
       const valid = !!path.getAttribute('d');
-      const active = !selected || edge.source === selected || edge.target === selected;
+      const active = !related || (related.has(edge.source) && related.has(edge.target));
       const fade = [edge.source, edge.target].reduce((value, id) => {
         const node = nodes.get(id);
         const layerIndex = node ? indices.get(node.layerId) : undefined;
         return layerIndex === undefined ? value : Math.min(value, fades.current[layerIndex] ?? 1);
       }, 1);
-      path.style.opacity = valid ? String((selected ? active ? 0.85 : 0.025 : 0.16) * fade) : '0';
-      const animate = flow && edge.type === 'call';
+      path.style.opacity = valid ? String((related ? active ? 0.85 : 0.025 : 0.16) * fade) : '0';
+      const animate = flow && edge.type === 'call' && active;
       dot.style.visibility = animate && valid && fade > 0.01 ? 'visible' : 'hidden';
-      dot.style.opacity = String((active ? 0.9 : 0.04) * fade);
+      dot.style.opacity = String(0.9 * fade);
       if (animate && valid) {
         const distance = path.getTotalLength();
         const point = path.getPointAtLength(distance * ((clock.getElapsedTime() * 0.28 + index * 0.137) % 1));
@@ -677,7 +677,7 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
   useEffect(() => { if (selectedNodeId && !selectionExists) onSelectNode?.(null); }, [selectedNodeId, selectionExists, onSelectNode]);
   const related = useMemo(() => {
     if (!activeSelectionId) return null;
-    return getConnectedNodes(activeSelectionId, data.edges, edgeTypes);
+    return getDownstreamNodes(activeSelectionId, data.edges, edgeTypes);
   }, [activeSelectionId, data.edges, edgeTypes]);
   const focus = focusedLayerId ? indices.get(focusedLayerId) ?? -1 : view === 'top' ? Math.min(1, spatialLayers.length - 1) : -1;
   const focusedOverhead = view === 'top' && focus >= 0 && !orbitExited;
@@ -731,10 +731,10 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
           const a = nodes.get(edge.source)!; const b = nodes.get(edge.target)!;
           if (layerTypes.get(a.layerId) !== 'default' || layerTypes.get(b.layerId) !== 'default') return null;
           const ai = indices.get(a.layerId)!; const bi = indices.get(b.layerId)!;
-          const active = !activeSelectionId || edge.source === activeSelectionId || edge.target === activeSelectionId;
+          const active = !related || (related.has(edge.source) && related.has(edge.target));
           return <AnimatedEdge key={key}
             source={edge.source} target={edge.target} sourceIndex={ai} targetIndex={bi}
-            targets={targets} positions={positions} flow={flow && edge.type === 'call'} phase={(index * 0.137) % 1} active={active} theme={theme} />;
+            targets={targets} positions={positions} flow={flow && edge.type === 'call' && active} phase={(index * 0.137) % 1} active={active} theme={theme} />;
         })}
         </group>
         <SceneFader root={sceneRoot} fades={fades} count={spatialLayers.length} focus={fadeFocus}
@@ -745,7 +745,7 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
           planeWidth={layout.width} planeDepth={layout.depth} />}
         {!!sideEdges.length && <SideEdgePaths edges={sideEdges} nodes={nodes} layerTypes={layerTypes} indices={indices}
           spacing={layerSpacing} zSpacing={layerZSpacing} layerCount={spatialLayers.length}
-          positions={positions} selected={activeSelectionId} refs={refs} fades={fades} flow={flow} compact={compact} />}
+          positions={positions} related={related} refs={refs} fades={fades} flow={flow} compact={compact} />}
         <Bloom strength={glowStrength} />
       </Canvas>
       {showLabels && <div className="dgt-world-labels" aria-hidden="true">

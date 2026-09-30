@@ -18,6 +18,35 @@ export function getConnectedNodes(nodeId: string, edges: readonly GraphEdge[], v
   return connected;
 }
 
+/**
+ * Get a node and every node reachable by following outgoing relationships.
+ * Incoming dependents are excluded. Cycles are visited once.
+ *
+ * @param nodeId - Starting node whose recursive dependencies to find.
+ * @param edges - Directed graph edges to traverse from source to target.
+ * @param visibleEdgeTypes - Optional relationship filter; untyped edges use `dependency`.
+ * @returns A set containing `nodeId` and all reachable targets.
+ */
+export function getDownstreamNodes(nodeId: string, edges: readonly GraphEdge[], visibleEdgeTypes?: ReadonlySet<GraphEdgeType>): Set<string> {
+  const outgoing = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (visibleEdgeTypes && !visibleEdgeTypes.has(edge.type ?? 'dependency')) continue;
+    const targets = outgoing.get(edge.source) ?? [];
+    targets.push(edge.target);
+    outgoing.set(edge.source, targets);
+  }
+  const reachable = new Set([nodeId]);
+  const pending = [nodeId];
+  for (let index = 0; index < pending.length; index++) {
+    for (const target of outgoing.get(pending[index]) ?? []) {
+      if (reachable.has(target)) continue;
+      reachable.add(target);
+      pending.push(target);
+    }
+  }
+  return reachable;
+}
+
 /** Find a node by ID in a graph snapshot, or return `undefined` if it is absent. */
 export function getNodeById(data: GraphData, id: string): GraphNode | undefined {
   return data.nodes.find((node) => node.id === id);
