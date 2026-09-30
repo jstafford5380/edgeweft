@@ -25,6 +25,9 @@ export function validateGraph(data: GraphData): string[] {
   for (const node of data.nodes) {
     if (nodeIds.has(node.id)) errors.push(`Duplicate node id: ${node.id}`);
     if (!layerIds.has(node.layerId)) errors.push(`Unknown layer for ${node.id}: ${node.layerId}`);
+    if ((node.x === undefined) !== (node.z === undefined)) errors.push(`Incomplete position for ${node.id}: supply both x and z`);
+    if (node.x !== undefined && !Number.isFinite(node.x)) errors.push(`Invalid x position for ${node.id}`);
+    if (node.z !== undefined && !Number.isFinite(node.z)) errors.push(`Invalid z position for ${node.id}`);
     nodeIds.add(node.id);
   }
   for (const edge of data.edges) {

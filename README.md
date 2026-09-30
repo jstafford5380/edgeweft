@@ -28,7 +28,7 @@ import 'dependency-graph-thing/style.css';
 
 const data: GraphData = {
   layers: [{ id: 'services', key: 'L1', label: 'Services' }],
-  nodes: [{ id: 'api', label: 'API', layerId: 'services', x: 0, z: 0 }],
+  nodes: [{ id: 'api', label: 'API', layerId: 'services' }],
   edges: [],
 };
 
@@ -39,4 +39,8 @@ const data: GraphData = {
 
 The component includes gridded 3D shelves, layer-specific node shapes, relationship lines, animated edge flow, bloom, camera presets, and an optional 2D owners panel. The test rail uses the full v3 prototype fixture. Each edge is directed from `source` to `target`; the flow particle travels in that direction. Set `flow={false}` to turn off the particles.
 
+Node `x` and `z` coordinates are optional. Missing positions are laid out deterministically on collision-safe slots within each layer; the layout improves edge length and projected crossings, and shelves grow to fit dense layers. Supplying both coordinates pins a node in place. The exported `layoutGraph(data)` helper returns resolved node positions and shelf dimensions. The test rail's **Auto layout** switch applies this to the prototype graph.
+
 Camera view changes ease over 900 ms; selecting a layer eases into its top view over 1100 ms. In a focused top view, higher layers fade out and lower layers remain faint. Rotating away from overhead restores the full stack; pass `onViewChange` to keep a controlled view selector in sync. Pass a new `cameraRequestKey` value to recenter the camera when the selected view and layer have not changed.
+
+`layerSpacing` controls vertical separation (Y axis). `layerZSpacing` spreads the shelves evenly along the Z axis around the stack's center; its default is `0`, and negative values reverse the spread direction. The test rail exposes both spacing controls, with a depth range of −600 to +600.

@@ -10,8 +10,10 @@ export interface GraphNode {
   id: string;
   label: string;
   layerId: string;
-  x: number;
-  z: number;
+  /** Optional horizontal position. Supply both x and z to pin a node. */
+  x?: number;
+  /** Optional depth position. Supply both x and z to pin a node. */
+  z?: number;
   subtitle?: string;
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cameraPoseForView, easeCubicInOut, interpolateCameraPose } from './camera';
+import { cameraPoseForView, easeCubicInOut, interpolateCameraPose, layerZOffset } from './camera';
 
 describe('camera transitions', () => {
   it('uses the prototype cubic easing curve', () => {
@@ -22,5 +22,24 @@ describe('camera transitions', () => {
     const pose = cameraPoseForView('top', 2, 240, 1200);
     expect(pose.ty).toBe(480);
     expect(pose.pol).toBeCloseTo(0.0005);
+  });
+
+  it('moves back to frame a shelf that has grown for many nodes', () => {
+    const standard = cameraPoseForView('top', 1, 240, 1200);
+    const expanded = cameraPoseForView('top', 1, 240, 1200, 2160, 1160);
+    expect(expanded.r).toBeCloseTo(standard.r * 2);
+  });
+
+  it('centers staggered shelves and tracks the chosen shelf in top view', () => {
+    expect([0, 1, 2, 3].map((index) => layerZOffset(index, 4, 100))).toEqual([150, 50, -50, -150]);
+    const top = cameraPoseForView('top', 2, 240, 1200, 1080, 580, 100, 4);
+    expect(top.tz).toBe(-25);
+    const compact = cameraPoseForView('3d', -1, 240, 1200);
+    const spread = cameraPoseForView('3d', -1, 240, 1200, 1080, 580, 300, 4);
+    const reverse = cameraPoseForView('3d', -1, 240, 1200, 1080, 580, -300, 4);
+    expect(spread.r).toBeGreaterThan(compact.r);
+    expect(reverse.r).toBe(spread.r);
+    expect(layerZOffset(0, 4, -100)).toBe(-150);
+    expect(spread.tz).toBe(0);
   });
 });

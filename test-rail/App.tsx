@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { DependencyGraph, type GraphView } from '../src';
+import { useMemo, useState } from 'react';
+import { DependencyGraph, type GraphData, type GraphView } from '../src';
 import { sampleGraph } from './sampleGraph';
 import './style.css';
 
@@ -15,10 +15,16 @@ export function App() {
   const [visibleEdgeTypes, setVisibleEdgeTypes] = useState(relationships.map((type) => type.id));
   const [showOwners, setShowOwners] = useState(true);
   const [flow, setFlow] = useState(true);
+  const [autoLayout, setAutoLayout] = useState(false);
   const [layerSpacing, setLayerSpacing] = useState(240);
+  const [layerZSpacing, setLayerZSpacing] = useState(0);
   const [view, setView] = useState<GraphView>('3d');
   const [focusedLayerId, setFocusedLayerId] = useState<string | null>('components');
   const [cameraRequestKey, setCameraRequestKey] = useState(0);
+  const graphData = useMemo<GraphData>(() => autoLayout ? {
+    ...sampleGraph,
+    nodes: sampleGraph.nodes.map(({ id, label, layerId, subtitle }) => ({ id, label, layerId, subtitle })),
+  } : sampleGraph, [autoLayout]);
 
   function selectView(nextView: GraphView) {
     setView(nextView);
@@ -57,10 +63,15 @@ export function App() {
           <span className="rail-line solid" /><span>Flow</span><small>source → target</small><span className="rail-check">{flow ? '☑' : '□'}</span>
         </button></section>
         <section className="rail-controls"><h2>Layer spacing <span>{layerSpacing}</span></h2><input aria-label="Layer spacing" type="range" min="140" max="400" step="10" value={layerSpacing} onChange={(event) => setLayerSpacing(Number(event.target.value))} /></section>
+        <section className="rail-controls"><h2>Depth spacing <span>{layerZSpacing}</span></h2><input aria-label="Depth spacing" type="range" min="-600" max="600" step="10" value={layerZSpacing} onChange={(event) => setLayerZSpacing(Number(event.target.value))} /></section>
+        <section><h2>Placement</h2><button className={`rail-relation${autoLayout ? '' : ' is-muted'}`} onClick={() => setAutoLayout(!autoLayout)} aria-pressed={autoLayout}>
+          <span className="rail-line solid" /><span>Auto layout</span><span className="rail-check">{autoLayout ? '☑' : '□'}</span>
+        </button></section>
         <div className="rail-help">Drag to orbit · Shift-drag to pan<br />Scroll to zoom<br />Choose a layer for its top view</div>
       </aside>
-      <div className="rail-content"><DependencyGraph data={sampleGraph} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
-        visibleLayerIds={visibleLayerIds} visibleEdgeTypes={visibleEdgeTypes} showOwners={showOwners} layerSpacing={layerSpacing}
+      <div className="rail-content"><DependencyGraph data={graphData} selectedNodeId={selectedNodeId} onSelectNode={setSelectedNodeId}
+        visibleLayerIds={visibleLayerIds} visibleEdgeTypes={visibleEdgeTypes} showOwners={showOwners}
+        layerSpacing={layerSpacing} layerZSpacing={layerZSpacing}
         view={view} focusedLayerId={focusedLayerId} cameraRequestKey={cameraRequestKey} onViewChange={setView} flow={flow} /></div>
     </main>
   </div>;
