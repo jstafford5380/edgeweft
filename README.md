@@ -1,30 +1,22 @@
-# Dependency Graph Thing
+# Edgeweft
 
-React and Three.js package scaffold for the layered dependency graph in [`docs/prototypes/from-claude`](docs/prototypes/from-claude).
+An interactive, layered 3D dependency graph for React. Render directed relationships across WebGL shelves and optional 2D side rails, with camera presets, selection highlighting, and animated call flow.
 
-## Run the test rail
+![Edgeweft in 3D view with four shelves and a 2D side rail](https://raw.githubusercontent.com/jstafford5380/edgeweft/main/assets/dependency-graph-3d.jpg)
 
-```bash
-npm install
-npm run dev
-```
-
-Open [http://localhost:5174/](http://localhost:5174/). The rail imports the package source from `src/` and uses sample data adapted from the prototype.
-
-## Build and check the package
+## Install
 
 ```bash
-npm run typecheck
-npm test
-npm run build
-npm run pack:check
+npm install edgeweft react react-dom three
 ```
 
-The build writes ESM, TypeScript declarations, and CSS to `dist/`. The package exports `DependencyGraph`, graph data types, and graph helpers. React 19, React DOM 19, and Three.js are peer dependencies. React Three Fiber renders the scene through WebGL.
+React 19, React DOM 19, and Three.js are peer dependencies. Import the package stylesheet alongside the component.
+
+## Quick start
 
 ```tsx
-import { DependencyGraph, type GraphData } from 'dependency-graph-thing';
-import 'dependency-graph-thing/style.css';
+import { DependencyGraph, type GraphData } from 'edgeweft';
+import 'edgeweft/style.css';
 
 const data: GraphData = {
   layers: [
@@ -74,6 +66,8 @@ Pass a new, immutable `GraphData` snapshot to update the graph. Keep layer and n
 
 Selecting a node emphasizes that node and every node reachable by following outgoing edges, including links between 3D shelves and 2D rails. Incoming dependents remain dim unless they are also reachable downstream. Call-flow particles run only on emphasized edges while a node is selected. The active `visibleEdgeTypes` filter limits traversal. `getDownstreamNodes(nodeId, edges, visibleEdgeTypes?)` exposes the same traversal for app logic; `getConnectedNodes` retains its direct, direction-agnostic behavior.
 
+The test rail's Owner associations point from each Owner node to its entities, so selecting an Owner highlights those entities and their recursive downstream relationships.
+
 Layers are groupings with an ID, label, and optional display metadata; their `type` controls placement. On 3D layers, set `shape` on each node to `cylinder`, `box`, `hexagon`, or `panel`. Nodes without a shape use `box`. The exported `graphNodeShapes` array lists supported values. Nodes with different shapes can share a layer.
 
 The canvas includes a floating 3D, Top, Side, and Front toolbar. Without a `view` prop it manages the current view itself. To control the view from your app, pass `view` and update it in `onViewChange`; the callback also fires when orbiting away from a focused top view. Camera view changes ease over 900 ms; selecting a layer eases into its top view over 1100 ms. In a focused top view, higher layers fade out and lower layers remain faint. Rotating away from overhead restores the full stack. Pass a new `cameraRequestKey` value to recenter the camera when the selected view and layer have not changed; clicking the active toolbar view also recenters it.
@@ -81,3 +75,37 @@ The canvas includes a floating 3D, Top, Side, and Front toolbar. Without a `view
 When mounted in the default 3D view, the graph opens on the top shelf, pauses briefly, then eases into the full 3D stack. This plays once per mount and does not replay for data updates. Set `introAnimation={false}` to start directly in the requested view.
 
 `layerSpacing` controls vertical separation (Y axis). `layerZSpacing` spreads the shelves evenly along the Z axis around the stack's center; its default is `0`, and negative values reverse the spread direction. The test rail exposes both spacing controls, with a depth range of −600 to +600.
+
+## Run the test rail
+
+```bash
+npm install
+npm run dev
+```
+
+Open [http://localhost:5174/](http://localhost:5174/). The rail imports the package source from `src/` and uses sample graph data.
+
+## Build and check the package
+
+```bash
+npm run typecheck
+npm test
+npm run build
+npm run pack:check
+```
+
+The build writes ESM, TypeScript declarations, and CSS to `dist/`. The package exports `DependencyGraph`, graph data types, and graph helpers. React Three Fiber renders the scene through WebGL.
+
+## Publish to npm
+
+The [publish workflow](.github/workflows/publish-npm.yml) runs after a pull request is merged into `main`. It publishes `edgeweft` under the `beta` npm dist-tag with a unique version based on the base version in `package.json`, the workflow run number, and the run attempt. For example, a `0.1.0-beta.0` manifest can produce `0.1.0-beta.42.1`. Bump the manifest's base version when starting a new release line.
+
+Push a tag such as `1.5.0-release` on a commit in `main` to publish stable version `1.5.0` under npm's `latest` dist-tag. The `-release` suffix is part of the Git tag only. Both paths run typecheck, tests, build, and package-content checks before publishing.
+
+The workflow uses the GitHub Actions repository secret `NPM_TOKEN`, which must belong to an npm account allowed to publish `edgeweft`. Its first publish claims the currently unclaimed package name. Publishing includes [npm provenance](https://docs.npmjs.com/generating-provenance-statements/).
+
+For a local dry run, use `npm run release -- --dry-run`. The local release script can also publish manually with an exported `NPM_KEY` and, for prereleases, `--tag beta`.
+
+## License
+
+Edgeweft is licensed under [MPL-2.0](LICENSE).

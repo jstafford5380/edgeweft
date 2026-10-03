@@ -1,16 +1,28 @@
 {
-  "name": "dependency-graph-thing",
-  "version": "0.1.0",
+  "name": "edgeweft",
+  "version": "0.1.0-beta.0",
   "description": "A layered 3D dependency graph for React",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jstafford5380/edgeweft.git"
+  },
+  "bugs": "https://github.com/jstafford5380/edgeweft/issues",
+  "homepage": "https://github.com/jstafford5380/edgeweft#readme",
   "type": "module",
-  "files": ["dist"],
-  "sideEffects": ["**/*.css"],
+  "files": [
+    "dist",
+    "assets/dependency-graph-3d.jpg"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./style.css": "./dist/dependency-graph-thing.css"
+    "./style.css": "./dist/edgeweft.css"
   },
   "types": "./dist/index.d.ts",
   "scripts": {
@@ -18,7 +30,8 @@
     "build": "vite build && tsc -p tsconfig.build.json",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "pack:check": "npm pack --dry-run"
+    "pack:check": "npm pack --dry-run",
+    "release": "bash ./scripts/release.sh"
   },
   "peerDependencies": {
     "react": "^19.0.0",

@@ -1,0 +1,111 @@
+name: Publish npm package
+
+on:
+  pull_request:
+    types: [closed]
+  push:
+    tags:
+      - '*-release'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.base.ref == 'main') ||
+      (github.event_name == 'push' && endsWith(github.ref, '-release'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the published commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js and npm registry
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
+
+      - name: Verify release tag is on main
+        if: github.event_name == 'push'
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "Release tags must point to a commit on main." >&2
+            exit 1
+          fi
+
+      - name: Set package version and npm tag
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            if [[ ! "$GITHUB_REF_NAME" =~ ^[0-9]+\.[0-9]+\.[0-9]+-release$ ]]; then
+              echo "Expected a tag like 1.5.0-release." >&2
+              exit 1
+            fi
+            version="${GITHUB_REF_NAME%-release}"
+            dist_tag=latest
+          else
+            base="$(node -p "require('./package.json').version.split('-')[0]")"
+            if [[ ! "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "package.json must have a numeric major.minor.patch base version." >&2
+              exit 1
+            fi
+            version="${base}-beta.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+            dist_tag=beta
+          fi
+          npm version "$version" --no-git-tag-version --allow-same-version
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "dist_tag=$dist_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check and build
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+
+      - name: Pack package
+        id: pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          tarball="release/$(npm pack --pack-destination release --silent)"
+          tar -tzf "$tarball" > release/contents.txt
+          for required in package/README.md package/LICENSE package/dist/index.js package/dist/edgeweft.css package/assets/dependency-graph-3d.jpg; do
+            if ! grep -Fxq "$required" release/contents.txt; then
+              echo "Package is missing $required." >&2
+              exit 1
+            fi
+          done
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          DIST_TAG: ${{ steps.version.outputs.dist_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$NODE_AUTH_TOKEN" ]]; then
+            echo "Set the NPM_TOKEN repository secret before publishing." >&2
+            exit 1
+          fi
+          npm publish "$TARBALL" --access public --tag "$DIST_TAG" --provenance

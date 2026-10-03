@@ -10,7 +10,7 @@ export default defineConfig(({ command }) => ({
             entry: 'src/index.ts',
             formats: ['es'] as const,
             fileName: 'index',
-            cssFileName: 'dependency-graph-thing',
+            cssFileName: 'edgeweft',
           },
           rollupOptions: {
             external: ['react', 'react-dom', 'react/jsx-runtime', 'three', /^three\//, /^@react-three\//],
