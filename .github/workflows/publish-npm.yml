@@ -134,4 +134,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm publish "./$TARBALL" --access public --tag "$DIST_TAG" --provenance --loglevel verbose
+          npm publish "./$TARBALL" --access public --tag "$DIST_TAG" --provenance
