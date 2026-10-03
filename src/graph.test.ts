@@ -73,6 +73,13 @@ describe('graph helpers', () => {
       .toContain('Unsupported layer type for side: floating');
   });
 
+  it('accepts hex layer colors and rejects colors the renderer cannot use', () => {
+    expect(validateGraph({ ...data, layers: [{ ...data.layers[0], color: '#3b9' }] })).toEqual([]);
+    expect(validateGraph({ ...data, layers: [{ ...data.layers[0], color: '#33bb99' }] })).toEqual([]);
+    expect(validateGraph({ ...data, layers: [{ ...data.layers[0], color: 'green' }] }))
+      .toContain('Invalid color for layer services: green');
+  });
+
   it('supports different node shapes in one layer and rejects unknown shapes', () => {
     expect(graphNodeShapes).toEqual(['cylinder', 'box', 'hexagon', 'panel']);
     expect(validateGraph({ ...data, nodes: [

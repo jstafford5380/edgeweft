@@ -53,7 +53,7 @@ export function getNodeById(data: GraphData, id: string): GraphNode | undefined 
 }
 
 /**
- * Check graph IDs, references, pinned coordinates, supported node shapes, and relationship types.
+ * Check graph IDs, references, pinned coordinates, layer colors, node shapes, and relationship types.
  *
  * @returns Human-readable validation errors; an empty array means the graph is valid.
  */
@@ -65,6 +65,7 @@ export function validateGraph(data: GraphData): string[] {
   for (const layer of data.layers) {
     if (layerIds.has(layer.id)) errors.push(`Duplicate layer id: ${layer.id}`);
     if (layer.type !== undefined && !['default', 'left2d', 'right2d'].includes(layer.type)) errors.push(`Unsupported layer type for ${layer.id}: ${layer.type}`);
+    if (layer.color !== undefined && !/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(layer.color.trim())) errors.push(`Invalid color for layer ${layer.id}: ${layer.color}`);
     layerIds.add(layer.id);
     layerTypes.set(layer.id, layer.type ?? 'default');
   }

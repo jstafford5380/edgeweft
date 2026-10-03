@@ -25,7 +25,7 @@ export interface GraphLayer {
   readonly label: string;
   /** Supporting text shown beside a shelf or under a 2D section heading. */
   readonly description?: string;
-  /** Optional color metadata; the built-in renderer does not currently use it. */
+  /** Optional layer accent as a CSS hex color (`#RGB` or `#RRGGBB`). */
   readonly color?: string;
 }
 

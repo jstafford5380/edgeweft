@@ -20,8 +20,8 @@ import '@provausio/edgeweft/style.css';
 
 const data: GraphData = {
   layers: [
-    { id: 'services', key: 'L1', label: 'Services' },
-    { id: 'teams', label: 'Teams', type: 'right2d' },
+    { id: 'services', key: 'L1', label: 'Services', color: '#33bb99' },
+    { id: 'teams', label: 'Teams', type: 'right2d', color: '#e0a050' },
   ],
   nodes: [
     { id: 'api', label: 'API', layerId: 'services', shape: 'box' },
@@ -68,7 +68,7 @@ Selecting a node emphasizes that node and every node reachable by following outg
 
 The test rail's Owner associations point from each Owner node to its entities, so selecting an Owner highlights those entities and their recursive downstream relationships.
 
-Layers are groupings with an ID, label, and optional display metadata; their `type` controls placement. On 3D layers, set `shape` on each node to `cylinder`, `box`, `hexagon`, or `panel`. Nodes without a shape use `box`. The exported `graphNodeShapes` array lists supported values. Nodes with different shapes can share a layer.
+Layers are groupings with an ID, label, and optional display metadata; their `type` controls placement. Set `color` to a CSS hex color (`#RGB` or `#RRGGBB`) to tint a 3D layer's shelf, nodes, labels, and outgoing links, or to accent a 2D rail section and its outgoing links. Layers without `color` use the palette derived from `baseColor`. On 3D layers, set `shape` on each node to `cylinder`, `box`, `hexagon`, or `panel`. Nodes without a shape use `box`. The exported `graphNodeShapes` array lists supported values. Nodes with different shapes can share a layer.
 
 The canvas includes a floating 3D, Top, Side, and Front toolbar. Without a `view` prop it manages the current view itself. To control the view from your app, pass `view` and update it in `onViewChange`; the callback also fires when orbiting away from a focused top view. Camera view changes ease over 900 ms; selecting a layer eases into its top view over 1100 ms. In a focused top view, higher layers fade out and lower layers remain faint. Rotating away from overhead restores the full stack. Pass a new `cameraRequestKey` value to recenter the camera when the selected view and layer have not changed; clicking the active toolbar view also recenters it.
 

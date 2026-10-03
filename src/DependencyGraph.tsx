@@ -531,13 +531,16 @@ function SideEdgePaths({ edges, nodes, layerTypes, indices, spacing, zSpacing, l
   return null;
 }
 
-function SidePanel({ side, layers, nodes, counts, selected, related, rows, onSelect }: {
+function SidePanel({ side, layers, nodes, counts, selected, related, rows, onSelect, layerThemes }: {
   side: 'left2d' | 'right2d'; layers: GraphLayer[]; nodes: readonly GraphNode[];
   counts: Map<string, number>; selected: string | null; related: Set<string> | null;
   rows: React.RefObject<Map<string, HTMLButtonElement>>; onSelect?: (nodeId: string | null) => void;
+  layerThemes: Map<string, GraphTheme>;
 }) {
   return <aside className={`dgt-side dgt-side--${side === 'left2d' ? 'left' : 'right'}`}>
-    {layers.map((layer) => <section className="dgt-side-section" key={layer.id}>
+    {layers.map((layer) => <section className={`dgt-side-section${layer.color ? ' has-layer-color' : ''}`} key={layer.id}
+      style={layer.color ? { '--dgt-layer-accent': layerThemes.get(layer.id)!.accent,
+        '--dgt-layer-label': layerThemes.get(layer.id)!.shelfLabel } as React.CSSProperties : undefined}>
       <div className="dgt-side-heading"><h3>{layer.label}</h3></div>
       {layer.description && <p>{layer.description}</p>}
       {nodes.filter((node) => node.layerId === layer.id).map((node) =>
@@ -563,6 +566,9 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
   const [toolbarRequestKey, setToolbarRequestKey] = useState(0);
   const view = controlledView ?? uncontrolledView;
   const theme = useMemo(() => createGraphTheme(baseColor, mode), [baseColor, mode]);
+  const coloredLayerIds = useMemo(() => new Set(data.layers.filter((layer) => layer.color).map((layer) => layer.id)), [data.layers]);
+  const layerThemes = useMemo(() => new Map(data.layers.map((layer) => [layer.id,
+    layer.color ? createGraphTheme(layer.color, mode) : theme] as const)), [data.layers, mode, theme]);
   const themeStyle = useMemo(() => ({
     '--dgt-bg': theme.background,
     '--dgt-text': theme.text,
@@ -721,11 +727,11 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
         <group ref={sceneRoot}>
         {spatialLayers.map((layer, index) => visible.has(layer.id) && <group key={layer.id} userData={{ fadeLayer: index }}>
           <Shelf index={index} spacing={layerSpacing} z={layerZOffset(index, spatialLayers.length, layerZSpacing)}
-            width={layout.width} depth={layout.depth} showGrid={showGrid} opacity={fillOpacity} theme={theme} />
+            width={layout.width} depth={layout.depth} showGrid={showGrid} opacity={fillOpacity} theme={layerThemes.get(layer.id)!} />
           {graph.nodes.filter((node) => node.layerId === layer.id).map((node) => <Node key={node.id} node={node}
             shape={node.shape ?? 'box'} target={targets.get(node.id)!} positions={positions}
             selected={node.id === activeSelectionId} dimmed={!!related && !related.has(node.id)}
-            onSelect={(id) => onSelectNode?.(id)} theme={theme} />)}
+            onSelect={(id) => onSelectNode?.(id)} theme={layerThemes.get(layer.id)!} />)}
         </group>)}
         {visibleEdges.map(({ edge, index, key }) => {
           const a = nodes.get(edge.source)!; const b = nodes.get(edge.target)!;
@@ -734,7 +740,7 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
           const active = !related || (related.has(edge.source) && related.has(edge.target));
           return <AnimatedEdge key={key}
             source={edge.source} target={edge.target} sourceIndex={ai} targetIndex={bi}
-            targets={targets} positions={positions} flow={flow && edge.type === 'call' && active} phase={(index * 0.137) % 1} active={active} theme={theme} />;
+            targets={targets} positions={positions} flow={flow && edge.type === 'call' && active} phase={(index * 0.137) % 1} active={active} theme={layerThemes.get(a.layerId)!} />;
         })}
         </group>
         <SceneFader root={sceneRoot} fades={fades} count={spatialLayers.length} focus={fadeFocus}
@@ -750,10 +756,13 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
       </Canvas>
       {showLabels && <div className="dgt-world-labels" aria-hidden="true">
         {spatialLayers.map((layer) => <div key={layer.id} className="dgt-shelf-label"
+          style={layer.color ? { '--dgt-layer-label': layerThemes.get(layer.id)!.shelfLabel } as React.CSSProperties : undefined}
           ref={(element) => { if (element) layerLabels.current.set(layer.id, element); else layerLabels.current.delete(layer.id); }}>
           <strong>{layer.key ?? layer.id.toUpperCase()} {layer.label}</strong><span>{layer.description}</span>
         </div>)}
         {graph.nodes.map((node) => <div key={node.id} className={`dgt-node-label${node.id === activeSelectionId ? ' is-selected' : ''}`}
+          style={coloredLayerIds.has(node.layerId)
+            ? { '--dgt-layer-node-label': layerThemes.get(node.layerId)!.nodeLabel } as React.CSSProperties : undefined}
           ref={(element) => { if (element) nodeLabels.current.set(node.id, element); else nodeLabels.current.delete(node.id); }}>
           <span>{shapeIcons[node.shape ?? 'box']}</span> {node.label}
         </div>)}
@@ -774,14 +783,14 @@ export function DependencyGraph({ data, selectedNodeId = null, onSelectNode, vis
           {option === '3d' ? '3D' : option[0].toUpperCase() + option.slice(1)}
         </button>)}</div>
     </div>
-    {!!leftLayers.length && <SidePanel side="left2d" layers={leftLayers} nodes={data.nodes} counts={sideCounts}
+    {!!leftLayers.length && <SidePanel side="left2d" layers={leftLayers} nodes={data.nodes} counts={sideCounts} layerThemes={layerThemes}
       selected={activeSelectionId} related={related} rows={sideRows} onSelect={onSelectNode} />}
-    {!!rightLayers.length && <SidePanel side="right2d" layers={rightLayers} nodes={data.nodes} counts={sideCounts}
+    {!!rightLayers.length && <SidePanel side="right2d" layers={rightLayers} nodes={data.nodes} counts={sideCounts} layerThemes={layerThemes}
       selected={activeSelectionId} related={related} rows={sideRows} onSelect={onSelectNode} />}
     {!!sideEdges.length && <svg className="dgt-side-links" aria-hidden="true">{sideEdges.map(({ edge, key }) => <g key={key}>
-      <path fill="none" stroke={theme.accent} strokeWidth="1" strokeDasharray="3 5"
+      <path fill="none" stroke={layerThemes.get(nodes.get(edge.source)!.layerId)!.accent} strokeWidth="1" strokeDasharray="3 5"
         ref={(element) => { if (element) paths.current.set(key, element); else paths.current.delete(key); }} />
-      <circle r="2.5" fill={theme.flow}
+      <circle r="2.5" fill={layerThemes.get(nodes.get(edge.source)!.layerId)!.flow}
         ref={(element) => { if (element) dots.current.set(key, element); else dots.current.delete(key); }} />
     </g>)}</svg>}
   </div>;
