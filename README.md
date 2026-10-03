@@ -98,7 +98,7 @@ The build writes ESM, TypeScript declarations, and CSS to `dist/`. The package e
 
 ## Publish to npm
 
-The [publish workflow](.github/workflows/publish-npm.yml) runs after a pull request is merged into `main`. It publishes `edgeweft` under the `beta` npm dist-tag with a unique version based on the base version in `package.json`, the workflow run number, and the run attempt. For example, a `0.1.0-beta.0` manifest can produce `0.1.0-beta.42.1`. Bump the manifest's base version when starting a new release line.
+The [publish workflow](.github/workflows/publish-npm.yml) runs after a push to `main`, whether it is a direct push or a merged pull request. It publishes `edgeweft` under the `beta` npm dist-tag with a unique version based on the base version in `package.json`, the workflow run number, and the run attempt. For example, a `0.1.0-beta.0` manifest can produce `0.1.0-beta.42.1`. Bump the manifest's base version when starting a new release line.
 
 Push a tag such as `1.5.0-release` on a commit in `main` to publish stable version `1.5.0` under npm's `latest` dist-tag. The `-release` suffix is part of the Git tag only. Both paths run typecheck, tests, build, and package-content checks before publishing.
 
