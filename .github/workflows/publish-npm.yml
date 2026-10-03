@@ -102,4 +102,4 @@ jobs:
             echo "Set the NPM_TOKEN repository secret before publishing." >&2
             exit 1
           fi
-          npm publish "$TARBALL" --access public --tag "$DIST_TAG" --provenance
+          npm publish "./$TARBALL" --access public --tag "$DIST_TAG" --provenance
