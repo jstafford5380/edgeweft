@@ -1,5 +1,5 @@
 {
-  "name": "edgeweft",
+  "name": "@provausio/edgeweft",
   "version": "0.1.0-beta.0",
   "description": "A layered 3D dependency graph for React",
   "license": "MPL-2.0",
@@ -9,6 +9,9 @@
   },
   "bugs": "https://github.com/jstafford5380/edgeweft/issues",
   "homepage": "https://github.com/jstafford5380/edgeweft#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "files": [
     "dist",
