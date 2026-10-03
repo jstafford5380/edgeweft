@@ -104,7 +104,7 @@ Push a tag such as `1.5.0-release` on a commit in `main` to publish stable versi
 
 You can also run **Publish npm package** from GitHub Actions on `main`. Choose `prerelease` for a new beta version, or choose `release` and enter a stable version such as `1.5.0`. The workflow rejects manual runs from other refs and rejects a release without a valid version. Do not publish the same stable version again with a release tag; npm versions cannot be reused.
 
-The workflow uses the GitHub Actions repository secret `NPM_TOKEN`, which must belong to an npm account allowed to publish packages under the `provausio` scope. Publishing includes [npm provenance](https://docs.npmjs.com/generating-provenance-statements/).
+The workflow publishes through the npm trusted publisher configured for `@provausio/edgeweft`. In the package's npm settings, the GitHub Actions publisher must specify GitHub owner `jstafford5380`, repository `edgeweft`, and workflow filename `publish-npm.yml`, with **Allow npm publish** enabled. The workflow uses GitHub's OIDC identity and includes [npm provenance](https://docs.npmjs.com/trusted-publishers/); it does not require an `NPM_TOKEN` secret.
 
 For a local dry run, use `npm run release -- --dry-run`. The local release script can also publish manually with an exported `NPM_KEY` and, for prereleases, `--tag beta`.
 
