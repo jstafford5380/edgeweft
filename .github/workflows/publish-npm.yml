@@ -6,6 +6,20 @@ on:
       - main
     tags:
       - '*-release'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Publish a prerelease or a stable release
+        type: choice
+        required: true
+        default: prerelease
+        options:
+          - prerelease
+          - release
+      version:
+        description: Stable version for release (for example, 1.5.0); leave blank for prerelease
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -31,18 +45,26 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           package-manager-cache: false
 
-      - name: Verify release tag is on main
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Verify publish source
         run: |
-          git fetch origin main
-          if ! git merge-base --is-ancestor HEAD origin/main; then
-            echo "Release tags must point to a commit on main." >&2
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Manual publishes must run from main." >&2
             exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            git fetch origin main
+            if ! git merge-base --is-ancestor HEAD origin/main; then
+              echo "Release tags must point to a commit on main." >&2
+              exit 1
+            fi
           fi
 
       - name: Set package version and npm tag
         id: version
         shell: bash
+        env:
+          PUBLISH_CHANNEL: ${{ inputs.channel }}
+          RELEASE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           if [[ "$GITHUB_REF" == refs/tags/* ]]; then
@@ -52,7 +74,18 @@ jobs:
             fi
             version="${GITHUB_REF_NAME%-release}"
             dist_tag=latest
+          elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$PUBLISH_CHANNEL" == "release" ]]; then
+            if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Manual releases require a version like 1.5.0." >&2
+              exit 1
+            fi
+            version="$RELEASE_VERSION"
+            dist_tag=latest
           else
+            if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$PUBLISH_CHANNEL" != "prerelease" ]]; then
+              echo "Choose release or prerelease." >&2
+              exit 1
+            fi
             base="$(node -p "require('./package.json').version.split('-')[0]")"
             if [[ ! "$base" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "package.json must have a numeric major.minor.patch base version." >&2

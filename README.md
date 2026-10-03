@@ -102,6 +102,8 @@ The [publish workflow](.github/workflows/publish-npm.yml) runs after a push to `
 
 Push a tag such as `1.5.0-release` on a commit in `main` to publish stable version `1.5.0` under npm's `latest` dist-tag. The `-release` suffix is part of the Git tag only. Both paths run typecheck, tests, build, and package-content checks before publishing.
 
+You can also run **Publish npm package** from GitHub Actions on `main`. Choose `prerelease` for a new beta version, or choose `release` and enter a stable version such as `1.5.0`. The workflow rejects manual runs from other refs and rejects a release without a valid version. Do not publish the same stable version again with a release tag; npm versions cannot be reused.
+
 The workflow uses the GitHub Actions repository secret `NPM_TOKEN`, which must belong to an npm account allowed to publish packages under the `provausio` scope. Publishing includes [npm provenance](https://docs.npmjs.com/generating-provenance-statements/).
 
 For a local dry run, use `npm run release -- --dry-run`. The local release script can also publish manually with an exported `NPM_KEY` and, for prereleases, `--tag beta`.
